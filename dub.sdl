@@ -1,0 +1,5 @@
+name "stringify"
+description "Various string structures and utilities useable in @nogc or betterC code (RCString, String, TempCString, format, ...)"
+authors "Tomáš Chaloupka"
+copyright "Copyright © 2020, Tomáš Chaloupka"
+license "BSL-1.0"
