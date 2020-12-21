@@ -269,6 +269,27 @@ private struct StringImpl(C, RC rc)
         }
 
         @disable this(this);
+
+        private this(C[] buf, size_t len)
+        {
+            this.buf = buf;
+            this.len = len;
+        }
+
+        StringImpl move() scope @trusted
+        {
+            auto obuf = buf;
+            auto olen = len;
+            buf = null;
+            len = 0;
+            return StringImpl(obuf, olen);
+        }
+
+        ///
+        StringImpl clone() scope
+        {
+            return StringImpl(this[]);
+        }
     }
 
     /**
@@ -489,6 +510,22 @@ auto rcString(C = char, S)(auto ref S str)
 {
     auto str = "foo".rcString();
     assert(str == "foo");
+}
+
+@nogc unittest
+{
+    auto s = String("Hello");
+    assert(s[] == "Hello", s[]);
+    s ~= " String";
+    assert(s[] == "Hello String", s[]);
+    auto s2 = s.clone();
+    assert(s[] == s2[]);
+    assert(s.ptr != s2.ptr);
+
+    auto s3 = s.move();
+    assert(s.buf is null);
+    assert(s.len == 0);
+    assert(s3 == "Hello String");
 }
 
 private C[] trustedRealloc(C)(scope C[] buf, size_t strLength, bool bufIsOnStack)

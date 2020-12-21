@@ -361,12 +361,12 @@ version (Posix)
         catch (Exception ex)
         {
             import std.format : format;
-            string std = () @trusted { return format!"Now how cool is that!: %s\0"(ex); }();
+            string std = () @trusted { return format!"Now how cool is that!: %s"(ex); }();
             (Exception ex, string std) nothrow @nogc
             {
-                auto str = nogcFormat!"Now how cool is that!: %s\0"(ex);
+                auto str = nogcFormat!"Now how cool is that!: %s"(ex);
                 assert(str.startsWith("Now how cool is that!: stringify.format.__unittest_L"));
-                assert(str[0..$-1] == std[0..$-1]);
+                assert(str[0..$] == std[0..$]);
             }(ex, std);
         }
     }
