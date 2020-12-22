@@ -1,4 +1,7 @@
-module stringify.internal.system.backtrace;
+module bc.core.system.backtrace;
+
+version (D_BetterC) {}
+else:
 
 /**
  * This struct us used to mimic private class in https://github.com/dlang/druntime/blob/master/src/core/runtime.d#L734
@@ -69,7 +72,7 @@ struct TraceInfo
     {
         version (Posix)
         {
-            import stringify.internal.system.linux.execinfo : backtrace, thread_stackBottom;
+            import bc.core.system.linux.execinfo : backtrace, thread_stackBottom;
 
             // just a copy from: https://github.com/dlang/druntime/blob/master/src/core/runtime.d#L742
             // again, cant't use directly as it's not @nogc
@@ -136,9 +139,9 @@ struct TraceInfo
         {
             version (Posix)
             {
-                import stringify.internal.system.linux.dwarf : dumpCallstack;
-                import stringify.internal.system.linux.elf : Image;
-                import stringify.internal.system.linux.execinfo : backtrace_symbols;
+                import bc.core.system.linux.dwarf : dumpCallstack;
+                import bc.core.system.linux.elf : Image;
+                import bc.core.system.linux.execinfo : backtrace_symbols;
                 import core.sys.posix.stdlib : free;
 
                 const char** frameList = () @trusted { return backtrace_symbols(&callstack[0], cast(int) numframes); }();
@@ -161,7 +164,7 @@ version (Posix)
     // get current callstack
     unittest
     {
-        import stringify.string : String;
+        import bc.string.string : String;
 
         auto ti = TraceInfo.current();
         String buf, buf2;
@@ -175,7 +178,7 @@ version (Posix)
     // get callstack from defaultTraceHandler
     unittest
     {
-        import stringify.string : String;
+        import bc.string.string : String;
         import core.runtime : defaultTraceHandler;
 
         auto dti = defaultTraceHandler();

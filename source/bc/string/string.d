@@ -1,15 +1,24 @@
 /**
  * Some helper functions to work with strings
  */
-module stringify.string;
+module bc.string.string;
 
-import stringify.internal.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
+import bc.core.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
 import core.atomic : atomicOp;
 import std.range : ElementEncodingType, hasLength, isInputRange;
 import std.traits : ForeachType, isSomeChar, isSomeString, Unqual;
 // debug import core.stdc.stdio;
 
+nothrow @nogc:
+
 alias CString = const(char)[];
+
+template isAcceptableString(S)
+{
+    enum isAcceptableString =
+        (isInputRange!S || isSomeString!S) &&
+        isSomeChar!(ElementEncodingType!S);
+}
 
 /**
  * Temporary string buffer.
@@ -54,8 +63,7 @@ struct TempCString(C)
 }
 
 /// ditto
-auto tempCString(C = char, S)(scope S str) if (isSomeChar!C && (isInputRange!S || isSomeString!S) &&
-    isSomeChar!(ElementEncodingType!S))
+auto tempCString(C = char, S)(scope S str) if (isAcceptableString!S)
 {
     alias CF = Unqual!(ElementEncodingType!S);
     auto res = TempCString!C.initialize();
@@ -99,7 +107,7 @@ auto tempCString(C = char, S)(scope S str) if (isSomeChar!C && (isInputRange!S |
         size_t strLength;
         static if (hasLength!S) strLength = str.length;
 
-        import std.utf : byUTF;
+        import bc.internal.utf : byUTF;
         static if (isSomeString!S)
             auto r = cast(const(CF)[])str;  // because inout(CF) causes problems with byUTF
         else
@@ -123,6 +131,7 @@ auto tempCString(C = char, S)(scope S str) if (isSomeChar!C && (isInputRange!S |
 }
 
 ///
+@("tempCString")
 nothrow @nogc @system unittest
 {
     import core.stdc.string : strlen;
@@ -141,23 +150,20 @@ nothrow @nogc @system unittest
     const char* pInvalid2 = str.tempCString();
 }
 
-nothrow @nogc @safe unittest
+@("tempCString - char, wchar, dchar")
+nothrow @nogc @trusted unittest
 {
     import std.algorithm : filter;
-    import std.utf : byCodeUnit;
+    import bc.internal.utf : byCodeUnit;
 
-    auto tmp = "baz".byCodeUnit.filter!(a => a == 'z').tempCString;
-    assert(tmp._length == 1);
-    assert(tmp._buf[0] == 'z');
-    assert(tmp._buf[1] == '\0');
-}
-
-nothrow @nogc @safe unittest
-{
     {
-        import std.algorithm : filter;
-        import std.utf : byCodeUnit;
+        auto tmp = "baz".byCodeUnit.filter!(a => a == 'z').tempCString;
+        assert(tmp._length == 1);
+        assert(tmp._buf[0] == 'z');
+        assert(tmp._buf[1] == '\0');
+    }
 
+    {
         auto tmp = "baz".byCodeUnit.filter!(a => a == 'z').tempCString!wchar;
         assert(tmp._length == 1);
         assert(tmp._buf[0] == 'z');
@@ -168,17 +174,6 @@ nothrow @nogc @safe unittest
         auto tmp = "baz".tempCString!dchar;
         assert(tmp._buf[0..3] == "baz"d);
     }
-}
-
-nothrow @nogc @system unittest
-{
-    import core.stdc.string : strlen;
-    import std.algorithm : joiner;
-    import std.conv : text;
-    import std.range : repeat;
-
-    static immutable str = "foo".repeat(100).joiner.text;
-    assert(strlen(str.tempCString()) == 3 * 100);
 }
 
 /**
@@ -303,7 +298,7 @@ private struct StringImpl(C, RC rc)
         pay.buf = () @trusted { return (cast(C*)enforceMalloc(len * C.sizeof))[0..len]; }();
     }
 
-    this(S)(auto ref scope S str) if (isInputRange!(Unqual!S) && isSomeChar!(Unqual!(ForeachType!S)))
+    this(S)(auto ref scope S str) if (isAcceptableString!S)
     {
         put(str);
     }
@@ -313,7 +308,7 @@ private struct StringImpl(C, RC rc)
      */
     static StringImpl from(ARGS...)(auto ref ARGS args)
     {
-        import stringify.format : getFormatSize, nogcFormatTo;
+        import bc.string.format : getFormatSize, nogcFormatTo;
 
         size_t total;
         // calculate total size needed so we don't have to reallocate
@@ -392,7 +387,7 @@ private struct StringImpl(C, RC rc)
         pay.buf[pay.len] = 0;
     }
 
-    void put(S)(auto ref scope S str) if (isInputRange!(Unqual!S) && isSomeChar!(Unqual!(ForeachType!S)))
+    void put(S)(auto ref scope S str) if (isAcceptableString!S)
     {
         alias CF = Unqual!(ElementEncodingType!S);
 
@@ -407,7 +402,7 @@ private struct StringImpl(C, RC rc)
         {
             // copy range
             static if (hasLength!S) ensureAvail(str.length);
-            import std.utf : byUTF;
+            import bc.internal.utf : byUTF;
             static if (isSomeString!S)
                 auto r = cast(const(CF)[])str;  // because inout(CF) causes problems with byUTF
             else
@@ -468,10 +463,11 @@ auto rcString(C = char, S)(auto ref S str)
     return ret;
 }
 
+@("RCString")
 @system @nogc unittest
 {
+    import bc.internal.utf : byCodeUnit;
     import std.algorithm : filter;
-    import std.utf : byCodeUnit;
 
     RCString s;
     s ~= "fo";
@@ -485,6 +481,7 @@ auto rcString(C = char, S)(auto ref S str)
     s ~= "bar";
     assert(s.pay.len == 6);
     assert(s.pay.buf.length >= 7);
+    assert(s == "foobar");
 
     s ~= "baz".byCodeUnit.filter!(a => a == 'z');
     assert(s.length == "foobarz".length);
@@ -494,24 +491,28 @@ auto rcString(C = char, S)(auto ref S str)
     assert((s.ptr["foobarz".length]) == 0);
 }
 
+@("RCString.from")
 @nogc unittest
 {
-    auto str = RCString.from("foo", 42, "bar");
-    assert(str == "foo42bar");
+    {
+        auto str = RCString.from("foo", 42, "bar");
+        assert(str == "foo42bar");
+    }
+
+    {
+        auto str = RCStringW.from("foo");
+        assert(str == "foo"w);
+    }
 }
 
-@nogc unittest
-{
-    auto str = RCStringW.from("foo");
-    assert(str == "foo"w);
-}
-
+@("rcString")
 @nogc unittest
 {
     auto str = "foo".rcString();
     assert(str == "foo");
 }
 
+@("String")
 @nogc unittest
 {
     auto s = String("Hello");
@@ -533,7 +534,7 @@ private C[] trustedRealloc(C)(scope C[] buf, size_t strLength, bool bufIsOnStack
 {
     pragma(inline, false);  // because it's rarely called
 
-    import stringify.internal.memory : enforceMalloc, enforceRealloc;
+    import bc.core.memory : enforceMalloc, enforceRealloc;
 
     size_t newlen = buf.length * 3 / 2;
 
@@ -564,113 +565,127 @@ private C[] trustedRealloc(C)(scope C[] buf, size_t strLength, bool bufIsOnStack
 /**
  * Alternative implementation of `std.string.outdent` that differs in:
  *
+ *   * meant for dedent string literals in CT
  *   * if first line is not indented, other lines are dedented still (std.string.outdent returns original text in that case)
  *   * empty lines at the text start are removed
- *   * is a bit faster
- *   * CT template to dedent string literals
  */
-
-template dedentCT(alias str)
+template dedent(alias str)
 {
-    enum dedentCT = dedent(str);
-}
-
-/// ditto
-S dedent(S)(S str) pure @safe nothrow
-    if (isSomeString!S)
-{
-    import std.array : join;
-    import std.range : empty;
-    import std.string : chomp, splitLines, stripLeft;
-    import std.typecons : Yes;
-
-    auto lines = str.stripLeft.splitLines(Yes.keepTerminator);
-    if (lines.empty) return null;
-
-    size_t shortestIndent = size_t.max;
-
-    // special case for first line - ignore no indentation on it
-    auto flstrip = lines[0].stripLeft();
-    if (flstrip.empty) lines[0] = lines[0][lines[0].chomp().length .. $]; // strip empty lines from whitespace
-    else
+    static S getLine(S)(S str)
     {
-        immutable ilen = lines[0][0 .. $-flstrip.length].length;
-        if (ilen) shortestIndent = ilen;
+        if (!str.length) return null;
+        for (size_t i = 0; i < str.length; ++i)
+        {
+            if (str[i] == '\r')
+            {
+                if (i+1 < str.length && str[i+1] == '\n')
+                    return str[0..i+2];
+            }
+            if (str[i] == '\n') return str[0..i+1];
+        }
+        return str;
     }
 
-    foreach (ref line; lines[1..$])
+    // strip line whitespace but keep newline characters
+    static S stripWS(S)(S str)
     {
-        const stripped = line.stripLeft();
-        if (stripped.empty) line = line[line.chomp().length .. $]; // strip empty lines from whitespace
+        if (!str.length) return null;
+        for (size_t i = 0; i < str.length; ++i)
+        {
+            if (str[i] <= ' ' && str[i] != '\r' && str[i] != '\n') continue;
+            return str[i..$];
+        }
+        return null;
+    }
+
+    template shortestIndent(alias str, size_t prev = size_t.max)
+    {
+        enum line = getLine(str);
+        enum stripped = stripWS(line);
+        static if (line.length == 0) enum shortestIndent = prev;
+        else static if (line.length == stripped.length) enum shortestIndent = 0;
         else
         {
-            const indent = line[0 .. $-stripped.length].length;
-            if (indent < shortestIndent)
-            {
-                if (indent == 0) return lines.join; // cant remove any indentation
-                shortestIndent = indent;
-            }
+            enum cur = prev > line.length - stripped.length ? line.length - stripped.length : prev;
+            enum next = shortestIndent!(str[line.length..$], cur);
+            enum shortestIndent = cur > next ? next : cur;
         }
     }
 
-    if (shortestIndent == size_t.max) return lines.join;
-
-    // special case for potentially not indented first line
-    flstrip = lines[0].stripLeft();
-    if (flstrip.length && flstrip.length < lines[0].length) lines[0] = lines[0][shortestIndent..$];
-
-    foreach (ref line; lines[1..$])
+    template dedentNext(alias str, size_t indent)
     {
-        if (line.length <= shortestIndent) continue; // Do nothing
-        line = line[shortestIndent..$];
+        enum ln = getLine(str);
+        static if (!ln.length)
+            enum dedentNext = null;
+        else static if (ln.length < indent)
+            enum dedentNext = ln ~ dedentNext!(str[ln.length..$], indent);
+        else
+            enum dedentNext = ln[indent..$] ~ dedentNext!(str[ln.length..$], indent);
     }
 
-    return lines.join;
+    enum line = getLine(str);
+    enum stripped = stripWS(line);
+
+    static if (!line.length) enum dedent = null;
+    else static if (
+            (stripped.length == 1 && stripped[0] == '\n')
+            || (stripped.length == 2 && stripped[0] == '\r' && stripped[1] == '\n'))
+        enum dedent = dedent!(str[line.length..$]); // drop first empty lines
+    else
+    {
+        // ignore no indentation of the first line
+        enum shortest = shortestIndent!(
+            str[line.length..$],
+            stripped.length == line.length ? size_t.max : (line.length - stripped.length));
+
+        static if (shortest == 0)
+            enum dedent = str; // no indent used
+        else
+            enum dedent = stripped ~ dedentNext!(str[line.length..$], shortest);
+    }
 }
 
+@("dedent")
 unittest
 {
     // with empty first line
     {
-        string str1 = `
+        enum str1 = `
                 DELETE FROM elements.element
                 WHERE id=ANY($1) AND type_id IN (
                     SELECT id FROM elements.element_type WHERE owner=$2
                 )`;
 
-        string str2 =
+        enum str2 =
                     "DELETE FROM elements.element\n" ~
                     "WHERE id=ANY($1) AND type_id IN (\n" ~
                     "    SELECT id FROM elements.element_type WHERE owner=$2\n" ~
                     ")";
 
-        assert(dedent(str1) == dedent(str2));
-        assert(dedent(str1) == str2);
-        assert(dedent(str2) != str1);
+        static assert(dedent!str1 == str2);
     }
 
+    // with not indented first line
     {
-        string str1 = `DELETE FROM elements.element
+        enum str1 = `DELETE FROM elements.element
                 WHERE id=ANY($1) AND type_id IN (
                     SELECT id FROM elements.element_type WHERE owner=$2
                 )`;
 
-        string str2 = "DELETE FROM elements.element\n" ~
+        enum str2 = "DELETE FROM elements.element\n" ~
                     "WHERE id=ANY($1) AND type_id IN (\n" ~
                     "    SELECT id FROM elements.element_type WHERE owner=$2\n" ~
                     ")";
 
-        assert(dedent(str1) == dedent(str2));
-        assert(dedent(str1) == str2);
-        assert(dedent(str2) != str1);
+        static assert(dedent!str1 == str2);
     }
 
     // test that we didn't touch number of lines
     {
-        assert(dedentCT!`
+        static assert(dedent!`
             2
             3
-        ` == "2\n3\n"); // first line is dropped, last newline is kept
+            ` == "2\n3\n"); // first line is dropped, last newline is kept
     }
 
     // test we don't dedent when some line is not indented
@@ -678,13 +693,13 @@ unittest
         enum str = `aa
             bb
 cc`;
-        assert(dedentCT!str == str);
+        assert(dedent!str == str);
     }
 
     // test that we don't touch space after last line text
     {
-        assert(dedentCT!"  foo " == "foo ");
-        assert(dedentCT!`foo
+        assert(dedent!"  foo " == "foo ");
+        assert(dedent!`foo
             bar ` == "foo\nbar ");
     }
 }

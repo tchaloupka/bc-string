@@ -1,5 +1,15 @@
-name "stringify"
+name "bc-string"
 description "Various string structures and utilities useable in @nogc or betterC code (RCString, String, TempCString, format, ...)"
 authors "Tomáš Chaloupka"
 copyright "Copyright © 2020, Tomáš Chaloupka"
 license "BSL-1.0"
+
+configuration "default" {
+}
+
+// test build with betterC
+configuration "betterC" {
+    targetType "executable"
+    buildOptions "betterC"
+    versions "CI_MAIN"
+}

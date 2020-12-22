@@ -1,4 +1,7 @@
-module stringify.internal.system.linux.elf;
+module bc.core.system.linux.elf;
+
+version (D_BetterC) {}
+else:
 
 // Copy from normally unavailable https://github.com/dlang/druntime/blob/master/src/rt/backtrace/elf.d
 

@@ -1,6 +1,7 @@
-module stringify.internal.memory;
+module bc.core.memory;
 
 import std.traits : hasIndirections, isDelegate, isFunctionPointer, isPointer, PointerTarget;
+public import core.memory : pureFree;
 
 version (D_Exceptions)
 {
@@ -23,7 +24,7 @@ auto heapAlloc(T, Args...) (Args args) @trusted
 if (is(T == struct))
 {
     pragma(inline);
-    import std.conv : emplace;
+    import core.lifetime : emplace;
 
     // allocate memory for the object
     auto memory = enforceMalloc(T.sizeof);
@@ -41,7 +42,6 @@ void heapDealloc(T)(ref T obj) @trusted
 if (isPointer!T && is(PointerTarget!T == struct))
 {
     pragma(inline);
-    import core.memory : GC, pureFree;
     import std.traits : hasElaborateDestructor;
 
     alias U = PointerTarget!T;

@@ -3,30 +3,44 @@
  *
  * Inspired by: https://github.com/weka-io/mecca/blob/master/src/mecca/lib/string.d
  */
-module stringify.format;
+module bc.string.format;
 
-import stringify.internal.intrinsics;
-import stringify.internal.system.backtrace : TraceInfo;
-import stringify.string;
+import bc.core.intrinsics;
+import bc.core.traits;
+import bc.string.string;
 import core.time : Duration;
 import std.algorithm : among;
-import std.conv : text, to;
 import std.datetime.date : TimeOfDay;
-import std.datetime.systime : SysTime;
 import std.traits :
     EnumMembers, FieldNameTuple, ForeachType, hasMember,
     isArray, isPointer, isSigned, isSomeChar, isStaticArray,
     PointerTarget, Unqual;
 import std.range : ElementEncodingType, isForwardRange, isInputRange;
-import std.typecons : Flag, Nullable, Tuple, isTuple;
-import std.uuid : UUID;
+import std.typecons : Flag, Tuple, isTuple;
+
+version (D_BetterC)
+{
+    // can't import std.uuid, std.datetime.systime in betterC
+    struct Fake {}
+    alias UUID = Fake;
+    alias SysTime = Fake;
+    alias TraceInfo = Fake;
+}
+else
+{
+    import bc.core.system.backtrace : TraceInfo;
+    import std.datetime.systime : SysTime;
+    import std.uuid : UUID;
+}
 
 /**
  * Formats values to with fmt template into provided sink.
  * Note: it supports only a basic subset of format type specifiers, main usage is for nogc logging
  * and error messages formatting. But more cases can be added as needed.
+ *
+ * WARN: %s accepts pointer to some char assuming it's a zero terminated string
  */
-size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args) @safe nothrow @nogc
+size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args) nothrow @nogc
 {
     // TODO: not pure because of float formatter
     alias sfmt = splitFmt!fmt;
@@ -37,13 +51,14 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
 
     foreach (tok; sfmt.tokens) {
         // pragma(msg, "tok: ", tok);
-        static if (is(typeof(tok) == string)) {
+        static if (is(typeof(tok) == string))
+        {
             static if (tok.length > 0) {
                 write(tok);
             }
         }
-        else static if (is(typeof(tok) == ArrFmtSpec)) {
-
+        else static if (is(typeof(tok) == ArrFmtSpec))
+        {
             enum j = tok.idx;
             alias Typ = Unqual!(ARGS[j]);
             static assert(
@@ -73,14 +88,15 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
             alias Typ = Unqual!(ARGS[j]);
             auto val = args[j];
 
-            static if (f == FMT.STR) {
-                static if (is(Typ == Nullable!U, U)) {
-                    if (val.isNull) write("null");
-                    else advance(s.nogcFormatTo!"%s"(val.get));
-                } else static if ((isArray!Typ && is(Unqual!(ForeachType!Typ) == char)))
+            static if (isStdNullable!Typ) {
+                if (val.isNull) write("null");
+                else advance(s.nogcFormatTo!"%s"(val.get));
+            }
+            else static if (f == FMT.STR) {
+                static if ((isArray!Typ && is(Unqual!(ForeachType!Typ) == char)))
                     write(val[]);
                 else static if (isInputRange!Typ && isSomeChar!(Unqual!(ElementEncodingType!Typ))) {
-                    import std.utf : byUTF;
+                    import bc.internal.utf : byUTF;
                     foreach (c; val.byUTF!char) write(c);
                 }
                 else static if (is(Typ == bool))
@@ -99,20 +115,19 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
                     if (!val.empty) advance(s.nogcFormatTo!"[%(%s%|, %)]"(val));
                     else write("[]");
                 }
-                // else static if (isTypedIdentifier!Typ) advance(s.nogcFormatTo!(Typ.name ~ "<%s>")(val.value));
                 else static if (isPointer!Typ) {
                     static if (is(typeof(*Typ)) && isSomeChar!(typeof(*Typ))) {
                         // NOTE: not safe, we can only trust that the provided char pointer is really stringz
-                        import std.string : fromStringz;
-                        auto tmp = () @trusted { return val.fromStringz; }();
-                        if (tmp) write(tmp);
+                        size_t i;
+                        while (val[i] != '\0') ++i;
+                        if (i) write(val[0..i]);
                     }
                     else advance(s.formatPtr(val));
                 }
                 else static if (is(Typ == char)) write(val);
                 else static if (isSomeChar!Typ) {
                     import std.range : only;
-                    import std.utf : byUTF;
+                    import bc.internal.utf : byUTF;
 
                     foreach (c; val.only.byUTF!char) write(c);
                 }
@@ -200,6 +215,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
 }
 
 ///
+@("combined")
 @safe @nogc unittest
 {
     char[100] buf;
@@ -215,7 +231,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
  */
 const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 {
-    import stringify.string : String;
+    import bc.string.string : String;
     static String str;
     str.clear();
     nogcFormatTo!fmt(str, args);
@@ -223,19 +239,22 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 }
 
 ///
+@("formatters")
 @safe unittest
 {
-    import core.exception : RangeError;
+    import bc.core.memory;
     import std.algorithm : filter;
-    import std.array : array;
-    import std.exception : assertThrown;
-    import std.uuid : parseUUID;
+    import std.range : chunks;
 
     assert(nogcFormat!"abcd abcd" == "abcd abcd");
     assert(nogcFormat!"123456789a" == "123456789a");
-    version (D_NoBoundsChecks) {} else {
+    version (D_NoBoundsChecks) {}
+    else version (D_Exceptions)
+    {
         () @trusted
         {
+            import core.exception : RangeError;
+            import std.exception : assertThrown;
             char[5] buf;
             assertThrown!RangeError(buf.nogcFormatTo!"123412341234");
         }();
@@ -265,26 +284,34 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
     enum Floop {XXX, YYY, ZZZ}
     assert(nogcFormat!"12345%s"(Floop.YYY) == "12345YYY");
     char[4] str = "foo\0";
-    assert(nogcFormat!"%s"(&str[0]) == "foo");
-    assert(nogcFormat!"%s"(parseUUID("22390768-cced-325f-8f0f-cfeaa19d0ccd")) == "22390768-cced-325f-8f0f-cfeaa19d0ccd");
+    assert(() @trusted { return nogcFormat!"%s"(str.ptr); }() == "foo");
+
+    version (D_BetterC) {}
+    else
+    {
+        assert(nogcFormat!"%s"(
+            UUID([138, 179, 6, 14, 44, 186, 79, 35, 183, 76, 181, 45, 179, 189, 251, 70]))
+            == "8ab3060e-2cba-4f23-b74c-b52db3bdfb46");
+    }
 
     // array format
-    assert(nogcFormat!"foo %(%d %)"([1,2,3]) == "foo 1 2 3");
-    assert(nogcFormat!"foo %-(%d %)"([1,2,3]) == "foo 1 2 3");
-    assert(nogcFormat!"foo %(-%d-%|, %)"([1,2,3]) == "foo -1-, -2-, -3-");
-    auto mat = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]
-    ];
-    assert(nogcFormat!"%(%(%d %)\n%)"(mat) == "1 2 3\n4 5 6\n7 8 9");
-    assert(nogcFormat!"%(0x%02x %)"([1,2,3]) == "0x01 0x02 0x03");
+    version (D_BetterC)
+    {
+        int[] arr = () @trusted { return (cast(int*)enforceMalloc(int.sizeof*10))[0..10]; }();
+        foreach (i; 0..10) arr[i] = i;
+        scope (exit) () @trusted { pureFree(arr.ptr); }();
+    }
+    else auto arr = [0,1,2,3,4,5,6,7,8,9];
+
+    assert(nogcFormat!"foo %(%d %)"(arr[1..4]) == "foo 1 2 3");
+    assert(nogcFormat!"foo %-(%d %)"(arr[1..4]) == "foo 1 2 3");
+    assert(nogcFormat!"foo %(-%d-%|, %)"(arr[1..4]) == "foo -1-, -2-, -3-");
+    assert(nogcFormat!"%(0x%02x %)"(arr[1..4]) == "0x01 0x02 0x03");
+    assert(nogcFormat!"%(%(%d %)\n%)"(arr[1..$].chunks(3)) == "1 2 3\n4 5 6\n7 8 9");
 
     // range format
-    auto arr = [0,1,2,3,4,5,6,7,8,9];
-    auto r = arr.filter!(a => a<5);
+    auto r = arr.filter!(a => a < 5);
     assert(nogcFormat!"%s"(r) == "[0, 1, 2, 3, 4]");
-    assert(r.array == [0, 1, 2, 3, 4]);
 
     // Arg num
     assert(!__traits(compiles, nogcFormat!"abc"(5)));
@@ -300,11 +327,19 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 
     assert(nogcFormat!"Hello %s"(5) == "Hello 5");
 
-    // alias Moishe = TypedIdentifier!("Moishe", ushort);
-    // assert(fmt!"Hello %s"(Moishe(5)) == "Hello Moishe<5>");
-
     struct Foo { int x, y; }
     assert(nogcFormat!("Hello %s")(Foo(1, 2)) == "Hello Foo(x=1, y=2)");
+
+    version (D_BetterC)
+    {
+        struct Nullable(T) // can't be instanciated in betterC - fake just for the UT
+        {
+            T get() { return T.init; }
+            bool isNull() { return true; }
+            void nullify() {}
+        }
+    }
+    else import std.typecons : Nullable;
 
     struct Msg { Nullable!string foo; }
     assert(nogcFormat!"%s"(Msg.init) == "Msg(foo=null)");
@@ -314,6 +349,7 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 }
 
 ///
+@("tuple")
 @safe unittest
 {
     {
@@ -330,6 +366,7 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 }
 
 ///
+@("custom format")
 @safe unittest
 {
     static struct Custom
@@ -347,7 +384,8 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
     assert(getFormatSize(c) == "custom: foo=42".length);
 }
 
-version (Posix)
+version (D_BetterC) {}
+else version (Posix)
 {
     // Only Posix is supported ATM
     @("Exception stack trace format")
@@ -365,7 +403,7 @@ version (Posix)
             (Exception ex, string std) nothrow @nogc
             {
                 auto str = nogcFormat!"Now how cool is that!: %s"(ex);
-                assert(str.startsWith("Now how cool is that!: stringify.format.__unittest_L"));
+                assert(str.startsWith("Now how cool is that!: bc.string.format.__unittest_L"));
                 assert(str[0..$] == std[0..$]);
             }(ex, std);
         }
@@ -381,6 +419,7 @@ size_t getFormatSize(string fmt = "%s", ARGS...)(auto ref ARGS args) @safe nothr
     return ns.nogcFormatTo!fmt(args);
 }
 
+@("getFormatSize")
 @safe unittest
 {
     assert(getFormatSize!"foo" == 3);
@@ -425,15 +464,13 @@ private struct FmtParams
 //     '%(' FormatString '%)'
 //     '%-(' FormatString '%)'
 //
-auto formatSpec(FMT f, string spec)
+auto formatSpec()(FMT f, string spec)
 {
+    import std.ascii : isDigit;
     FmtParams res; int idx;
 
     if (spec.length)
     {
-        import std.ascii : isDigit;
-        import std.string : indexOf;
-
         assert(spec.indexOf('$') < 0, "Position specifier not supported");
 
         // Flags:
@@ -518,12 +555,11 @@ done:
     return res;
 }
 
-// used to find end of the format specifier.
+// Used to find end of the format specifier.
 // See: https://dlang.org/phobos/std_format.html for grammar and valid characters for fmt spec
 // Note: Nested array fmt spec is handled separately so no '(', ')' characters here
-private ulong getNextNonDigitFrom(string fmt)
+private ulong getNextNonDigitFrom()(string fmt)
 {
-    import std.string : indexOf;
     ulong idx;
     foreach (c; fmt) {
         if ("0123456789+-.,#*?$ ".indexOf(c) < 0)
@@ -533,7 +569,7 @@ private ulong getNextNonDigitFrom(string fmt)
     return idx;
 }
 
-private long getNestedArrayFmtLen(string fmt)
+private long getNestedArrayFmtLen()(string fmt)
 {
     long idx; int lvl;
     while (idx < fmt.length)
@@ -542,7 +578,7 @@ private long getNestedArrayFmtLen(string fmt)
         if (fmt[idx] == '(' // new nested array can be '%(' or '%-('
             && (
                 (idx > 0 && fmt[idx-1] == '%')
-                || (idx > 1 && fmt[idx-2..idx] == "%-")
+                || (idx > 1 && fmt[idx-2] == '%' && fmt[idx-1] == '-')
             )) lvl++;
         // detect end of nested array format spec
         if (fmt[idx] == '%' && fmt.length > idx+1 && fmt[idx+1] == ')') {
@@ -554,6 +590,7 @@ private long getNestedArrayFmtLen(string fmt)
     return -1;
 }
 
+@("getNestedArrayFmtLen")
 unittest
 {
     static assert(getNestedArrayFmtLen("%d%)foo") == 4);
@@ -561,8 +598,16 @@ unittest
     static assert(getNestedArrayFmtLen("%(%d%)%)foo") == 8);
 }
 
+// workaround for std.string.indexOf not working in betterC
+private ptrdiff_t indexOf()(string fmt, char c)
+{
+    for (ptrdiff_t i = 0; i < fmt.length; ++i)
+        if (fmt[i] == c) return i;
+    return -1;
+}
+
 // Phobos version has bug in CTFE, see: https://issues.dlang.org/show_bug.cgi?id=20783
-private ptrdiff_t fixedLastIndexOf(string s, string sub)
+private ptrdiff_t fixedLastIndexOf()(string s, string sub)
 {
     for (ptrdiff_t i = s.length - sub.length; i >= 0; --i)
     {
@@ -575,7 +620,6 @@ private ptrdiff_t fixedLastIndexOf(string s, string sub)
 private template getNestedArrayFmt(string fmt)
 {
     import std.meta : AliasSeq;
-    import std.string : indexOf;
 
     // make sure we're searching in top level only
     enum lastSubEnd = fmt.fixedLastIndexOf("%)");
@@ -614,6 +658,7 @@ private template getNestedArrayFmt(string fmt)
     }
 }
 
+@("getNestedArrayFmt")
 unittest
 {
     import std.meta : AliasSeq;
@@ -654,7 +699,6 @@ template splitFmt(string fmt) {
     }
 
     template helper(int from, int j) {
-        import std.string : indexOf;
         import std.typetuple : TypeTuple;
         enum idx = fmt[from .. $].indexOf('%');
         static if (idx < 0) {
@@ -744,21 +788,16 @@ size_t formatPtr(S)(ref S sink, const void* ptr) pure @safe nothrow @nogc
     }
 }
 
+@("pointer")
 @safe unittest
 {
-    import std.string: format;
     char[100] buf;
-    int p;
 
     () @nogc @safe
     {
         assert(formatPtr(buf, 0x123) && buf[0..16] == "0000000000000123");
         assert(formatPtr(buf, 0) && buf[0..4] == "null");
         assert(formatPtr(buf, null) && buf[0..4] == "null");
-    }();
-
-    () @trusted {
-        assert(formatPtr(buf, &p) && buf[0..16] == format("%016x", &p));
     }();
 }
 
@@ -811,6 +850,7 @@ size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(ref S
     }
 }
 
+@("hexadecimal")
 @safe @nogc unittest
 {
     char[100] buf;
@@ -826,7 +866,7 @@ size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(ref S
 size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(ref S sink, T val) pure @safe nothrow @nogc
     if (is(typeof({ulong v = val;})))
 {
-    import stringify.numeric : numDigits;
+    import bc.string.numeric : numDigits;
 
     static if (is(Unqual!T == bool)) size_t len = 1;
     else size_t len = numDigits(val);
@@ -889,6 +929,7 @@ size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(ref S sink, T val)
     }
 }
 
+@("decimal")
 @safe @nogc unittest
 {
     char[100] buf;
@@ -920,6 +961,7 @@ size_t formatFloat(S)(ref S sink, double val) @trusted nothrow @nogc // not pure
     return len;
 }
 
+@("float")
 @safe unittest
 {
     char[100] buf;
@@ -955,11 +997,13 @@ size_t formatUUID(S)(ref S sink, UUID val) pure @safe nothrow @nogc
     return 36;
 }
 
+version (D_BetterC) {}
+else
+@("UUID")
 @safe unittest
 {
-    import std.uuid : parseUUID;
     char[100] buf;
-    assert(formatUUID(buf, parseUUID("8ab3060e-2cba-4f23-b74c-b52db3bdfb46")) == 36);
+    assert(formatUUID(buf, UUID([138, 179, 6, 14, 44, 186, 79, 35, 183, 76, 181, 45, 179, 189, 251, 70])) == 36);
     assert(buf[0..36] == "8ab3060e-2cba-4f23-b74c-b52db3bdfb46");
 }
 
@@ -1073,6 +1117,9 @@ size_t formatSysTime(S)(ref S sink, SysTime val) @trusted nothrow @nogc // not p
     }
 }
 
+version (D_BetterC) {}
+else
+@("SysTime")
 @safe unittest
 {
     char[100] buf;
@@ -1189,6 +1236,7 @@ size_t formatDuration(S)(ref S sink, Duration val) @trusted nothrow @nogc pure
     return totalLen;
 }
 
+@("duration")
 @safe unittest
 {
     import core.time;
@@ -1265,6 +1313,7 @@ private auto sinkWrap(S)(ref S sink) @trusted // we're only using this internall
     else static assert(0, "Unsupported sink type: " ~ S.stringof);
 }
 
+@("sink wrapper")
 unittest
 {
     char[42] buf;

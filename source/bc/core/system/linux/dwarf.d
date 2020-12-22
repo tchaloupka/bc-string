@@ -1,8 +1,9 @@
-module stringify.internal.system.linux.dwarf;
+module bc.core.system.linux.dwarf;
 
-version (linux):
+version (D_BetterC) {}
+else version (linux):
 
-import stringify.internal.system.linux.elf : Image;
+import bc.core.system.linux.elf : Image;
 import core.exception : onOutOfMemoryErrorNoGC;
 import core.internal.traits : dtorIsNothrow;
 import core.stdc.stdio : snprintf;
@@ -180,7 +181,7 @@ void resolveAddresses(const(ubyte)[] debugLineSectionData, Location[] locations,
 const(char)[] getDemangledSymbol(const(char)[] btSymbol, return ref char[1024] buffer) nothrow @nogc
 {
     //import core.demangle; // isn't @nogc :(
-    import stringify.internal.demangle : demangle;
+    import bc.core.demangle : demangle;
     import core.internal.execinfo : getMangledSymbolName;
 
     const mangledName = getMangledSymbolName(btSymbol);

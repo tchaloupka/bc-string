@@ -1,4 +1,4 @@
-module stringify.internal.system.linux.execinfo;
+module bc.core.system.linux.execinfo;
 
 // Copy from (missing @nogc): https://github.com/dlang/druntime/blob/master/src/core/sys/linux/execinfo.d
 

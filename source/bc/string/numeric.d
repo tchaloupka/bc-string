@@ -1,10 +1,12 @@
-module stringify.numeric;
+module bc.string.numeric;
 
-import stringify.internal.intrinsics;
+import bc.core.intrinsics;
 import std.traits : isIntegral, isSigned;
 
+pure @safe nothrow @nogc:
+
 /// Calculates number of digits of the provided number including sign character for negative numbers.
-int numDigits(T)(T number) @safe
+int numDigits(T)(T number)
     if (isIntegral!T)
 {
     pragma(inline);
@@ -32,10 +34,11 @@ int numDigits(T)(T number) @safe
         // specialization for 1B numbers
         static if (T.sizeof == 1)
         {
-            import std.algorithm : map;
-            import std.array : array;
-            import std.range : iota;
-            static immutable dmap = iota(0, 256).map!(a => numDigits(a)).array;
+            static immutable ubyte[256] dmap = () {
+                ubyte[256] ret;
+                for (int i=0; i < 256; ++i) ret[i] = cast(ubyte)numDigits(i);
+                return ret;
+            }();
             return dmap[number];
         }
         else
@@ -100,6 +103,7 @@ int numDigits(T)(T number) @safe
 }
 
 ///
+@("numDigits CT")
 @safe unittest
 {
     // ctfe tests
@@ -116,6 +120,7 @@ int numDigits(T)(T number) @safe
 }
 
 ///
+@("numDigits RT")
 @safe unittest
 {
     // uint.max = 4_294_967_295 -> 10 digits

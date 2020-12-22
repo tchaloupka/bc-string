@@ -12,7 +12,10 @@
  * See: https://github.com/dlang/druntime/blob/master/src/core/demangle.d
  * Last revision from: d2d49ab4930e1ffd3ece6e5a6ea7767a01d5e077
  */
-module stringify.internal.demangle;
+module bc.core.demangle;
+
+version (D_BetterC) {}
+else:
 
 import core.exception : onOutOfMemoryErrorNoGC;
 
