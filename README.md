@@ -1,4 +1,9 @@
 # bc-string
+[![Actions Status](https://github.com/tchaloupka/bc-string/workflows/ci/badge.svg)](https://github.com/tchaloupka/bc-string/actions)
+[![Latest version](https://img.shields.io/dub/v/bc-string.svg)](https://code.dlang.org/packages/bc-string)
+[![Dub downloads](https://img.shields.io/dub/dt/bc-string.svg)](http://code.dlang.org/packages/bc-string)
+[![codecov](https://codecov.io/gh/tchaloupka/bc-string/branch/master/graph/badge.svg)](https://codecov.io/gh/tchaloupka/bc-string)
+[![license](https://img.shields.io/github/license/tchaloupka/bc-string.svg)](https://github.com/tchaloupka/bc-string/blob/master/LICENSE)
 
 Set of utilities to help working with strings in a `@nogc` or `betterC` codes.
 
