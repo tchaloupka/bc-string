@@ -61,7 +61,7 @@ version (CI_MAIN)
                 import core.exception : RangeError;
                 import std.exception : assertThrown;
                 char[5] buf;
-                assertThrown!RangeError(buf.nogcFormatTo!"123412341234");
+                version (assert) assertThrown!RangeError(buf.nogcFormatTo!"123412341234");
             }();
         }
 

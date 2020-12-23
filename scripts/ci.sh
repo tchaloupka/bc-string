@@ -38,14 +38,17 @@ else
     ./bc-string-release-test
 
     echo "Building betterC unittest runner"
-    # $DC -version=CI_MAIN -debug -unittest -g -w -vcolumns -betterC -of=bc-string-bc-test $SRC_FILES
     $DC -c -version=CI_MAIN -debug -unittest -g -w -vcolumns -betterC -of=bc-string.o $SRC_FILES
-    $DC -ofbc-string-bc-test bc-string.o -L--no-as-needed -g
+    $DC -ofbc-string-bc-test bc-string.o -g -betterC
     ./bc-string-bc-test
 
     echo "Building betterC test build"
-    # $DC -version=CI_MAIN -debug -g -w -vcolumns -betterC -of=bc-string-bc-test $SRC_FILES
     $DC -c -version=CI_MAIN -debug -g -w -vcolumns -betterC -of=bc-string.o $SRC_FILES
-    $DC -ofbc-string-bc-test bc-string.o -L--no-as-needed -g
+    $DC -ofbc-string-bc-test bc-string.o -g -betterC
+    ./bc-string-bc-test
+
+    echo "Building betterC release build"
+    $DC -c -version=CI_MAIN -release -g -O -boundscheck=off -w -vcolumns -betterC -of=bc-string.o $SRC_FILES
+    $DC -ofbc-string-bc-test bc-string.o -g -betterC
     ./bc-string-bc-test
 fi

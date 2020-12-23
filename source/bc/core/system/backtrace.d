@@ -1,7 +1,7 @@
 module bc.core.system.backtrace;
 
 version (D_BetterC) {}
-else:
+else version (linux):
 
 /**
  * This struct us used to mimic private class in https://github.com/dlang/druntime/blob/master/src/core/runtime.d#L734

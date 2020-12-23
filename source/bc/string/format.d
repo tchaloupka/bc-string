@@ -6,9 +6,9 @@
 module bc.string.format;
 
 import bc.core.intrinsics;
+import bc.core.system.backtrace;
 import bc.core.traits;
 import bc.string.string;
-import core.time : Duration;
 import std.algorithm : among;
 import std.datetime.date : TimeOfDay;
 import std.traits :
@@ -18,19 +18,37 @@ import std.traits :
 import std.range : ElementEncodingType, isForwardRange, isInputRange;
 import std.typecons : Flag, Tuple, isTuple;
 
-version (D_BetterC)
-{
-    // can't import std.uuid, std.datetime.systime in betterC
-    struct Fake {}
-    alias UUID = Fake;
-    alias SysTime = Fake;
-    alias TraceInfo = Fake;
-}
+version (D_BetterC) {}
 else
 {
-    import bc.core.system.backtrace : TraceInfo;
+    import core.time : Duration;
     import std.datetime.systime : SysTime;
     import std.uuid : UUID;
+}
+
+private template isUUID(T)
+{
+    version (D_BetterC) enum isUUID = false;
+    else enum isUUID = is(T == UUID);
+}
+
+private template isSysTime(T)
+{
+    version (D_BetterC) enum isSysTime = false;
+    else enum isSysTime = is(T == SysTime);
+}
+
+private template isDuration(T)
+{
+    version (D_BetterC) enum isDuration = false;
+    else enum isDuration = is(T == Duration);
+}
+
+private template isTraceInfo(T)
+{
+    version (D_BetterC) enum isTraceInfo = false;
+    else version (linux) enum isTraceInfo = is(T == TraceInfo);
+    else enum isTraceInfo = false;
 }
 
 /**
@@ -43,9 +61,10 @@ else
 size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args) nothrow @nogc
 {
     // TODO: not pure because of float formatter
+    // import std.conv : text;
     alias sfmt = splitFmt!fmt;
-    static assert (sfmt.numFormatters == ARGS.length, "Expected " ~ text(sfmt.numFormatters) ~
-        " arguments, got " ~ text(ARGS.length));
+    static assert (sfmt.numFormatters == ARGS.length, "Expected " ~ sfmt.numFormatters.stringof ~
+        " arguments, got " ~ ARGS.length.stringof);
 
     mixin SinkWriter!S;
 
@@ -105,11 +124,11 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
                     auto tmp = enumToStr(val);
                     if (_expect(tmp is null, false)) advance(s.nogcFormatTo!"%s(%d)"(Typ.stringof, val));
                     else write(tmp);
-                } else static if (is(Typ == UUID)) advance(s.formatUUID(val));
-                else static if (is(Typ == SysTime)) advance(s.formatSysTime(val));
+                } else static if (isUUID!Typ) advance(s.formatUUID(val));
+                else static if (isSysTime!Typ) advance(s.formatSysTime(val));
                 else static if (is(Typ == TimeOfDay))
                     advance(s.nogcFormatTo!"%02d:%02d:%02d"(val.hour, val.minute, val.second));
-                else static if (is(Typ == Duration)) advance(s.formatDuration(val));
+                else static if (isDuration!Typ) advance(s.formatDuration(val));
                 else static if (isArray!Typ || isInputRange!Typ) {
                     import std.range : empty;
                     if (!val.empty) advance(s.nogcFormatTo!"[%(%s%|, %)]"(val));
@@ -145,10 +164,15 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
                 }
                 else static if (is(Typ : Throwable)) {
                     auto obj = cast(Object)val;
-                    advance(s.nogcFormatTo!"%s@%s(%d): %s\n----------------\n%s"(
-                        typeid(obj).name, val.file, val.line, val.msg, TraceInfo(val)));
+                    static if (__traits(compiles, TraceInfo(val))) {
+                        advance(s.nogcFormatTo!"%s@%s(%d): %s\n----------------\n%s"(
+                            typeid(obj).name, val.file, val.line, val.msg, TraceInfo(val)));
+                    }
+                    else
+                        advance(s.nogcFormatTo!"%s@%s(%d): %s"(
+                            typeid(obj).name, val.file, val.line, val.msg));
                 }
-                else static if (is(Typ == TraceInfo)) {
+                else static if (isTraceInfo!Typ) {
                     auto sw = sinkWrap(s);
                     val.dumpTo(sw);
                     advance(sw.totalLen);
@@ -385,7 +409,7 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 }
 
 version (D_BetterC) {}
-else version (Posix)
+else version (linux)
 {
     // Only Posix is supported ATM
     @("Exception stack trace format")
@@ -453,6 +477,8 @@ private struct FmtParams
     int prec; // precision, if -1, use previous argument as precision value
 }
 
+private bool isDigit()(immutable char c) { return c >= '0' && c <= '9'; }
+
 // Parses format specifier in CTFE
 // See: https://dlang.org/phobos/std_format.html for details
 // Note: Just a subset of the specification is supported ATM. Parser here parses the spec, but
@@ -466,7 +492,6 @@ private struct FmtParams
 //
 auto formatSpec()(FMT f, string spec)
 {
-    import std.ascii : isDigit;
     FmtParams res; int idx;
 
     if (spec.length)
@@ -609,10 +634,22 @@ private ptrdiff_t indexOf()(string fmt, char c)
 // Phobos version has bug in CTFE, see: https://issues.dlang.org/show_bug.cgi?id=20783
 private ptrdiff_t fixedLastIndexOf()(string s, string sub)
 {
-    for (ptrdiff_t i = s.length - sub.length; i >= 0; --i)
+    if (!__ctfe) assert(0);
+
+    LOOP: for (ptrdiff_t i = s.length - sub.length; i >= 0; --i)
     {
-        if (s[i .. i + sub.length] == sub[])
-        return i;
+        version (D_BetterC)
+        {
+            // workaround for missing symbol used by DMD
+            for (ptrdiff_t j=0; j<sub.length; ++j)
+                if (s[i+j] != sub[j]) continue LOOP;
+            return i;
+        }
+        else
+        {
+            if (s[i .. i + sub.length] == sub[])
+                return i;
+        }
     }
     return -1;
 }
@@ -1236,6 +1273,8 @@ size_t formatDuration(S)(ref S sink, Duration val) @trusted nothrow @nogc pure
     return totalLen;
 }
 
+version (D_BetterC) {}
+else
 @("duration")
 @safe unittest
 {
