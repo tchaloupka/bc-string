@@ -194,9 +194,10 @@ alias RCStringW = StringImpl!(wchar, RC.yes);
 alias RCStringD = StringImpl!(dchar, RC.yes);
 
 /**
- * String with unique ownership implementation
+ * String with unique ownership implementation.
  *
  * Similar to RCString but can be only moved passing it's ownership.
+ * Furthermore it uses 512B stack allocated buffer for short strings.
  */
 alias String = StringImpl!(char, RC.no);
 
@@ -253,7 +254,9 @@ private struct StringImpl(C, RC rc)
         private
         {
             size_t len;
+            C[512] stackBuf;
             C[] buf;
+            bool useStackBuf;
             alias pay = typeof(this); // to access fields through pay.xx too
         }
 
@@ -267,7 +270,8 @@ private struct StringImpl(C, RC rc)
 
         private this(C[] buf, size_t len)
         {
-            this.buf = buf;
+            if (buf.length <= stackBuf.length) stackBuf[0..buf.length] = buf;
+            else this.buf = buf;
             this.len = len;
         }
 
@@ -277,7 +281,7 @@ private struct StringImpl(C, RC rc)
             auto olen = len;
             buf = null;
             len = 0;
-            return StringImpl(obuf, olen);
+            return StringImpl(obuf ? obuf : stackBuf[], olen);
         }
 
         ///
@@ -295,6 +299,9 @@ private struct StringImpl(C, RC rc)
     {
         static if (rc) pay = heapAlloc!Payload(1, 0);
         immutable len = initialSize + 1;
+        static if (!rc) {
+            if (stackBuf.length >= len) return; // we can use stack buffer for that
+        }
         pay.buf = () @trusted { return (cast(C*)enforceMalloc(len * C.sizeof))[0..len]; }();
     }
 
@@ -327,6 +334,10 @@ private struct StringImpl(C, RC rc)
     {
         if (!length) return null;
 
+        static  if (!rc) {
+            if (len < stackBuf.length) return stackBuf[0..len];
+        }
+
         assert(pay.buf);
         return pay.buf[0..pay.len];
     }
@@ -334,6 +345,9 @@ private struct StringImpl(C, RC rc)
     @property inout(C*) ptr() pure inout @trusted
     {
         if (!length) return null;
+        static  if (!rc) {
+            if (len <= stackBuf.length) return stackBuf.ptr;
+        }
         return pay.buf.ptr;
     }
 
@@ -369,6 +383,15 @@ private struct StringImpl(C, RC rc)
             return len;
     }
 
+    /// Returns: available capacity that can be used without reallocation
+    size_t capacity() pure const
+    {
+        static if (rc)
+            return pay ? (pay.buf.length - 1 - pay.len) : 0;
+        else
+            return (buf ? buf.length : stackBuf.length) - 1 - len;
+    }
+
     /**
      * Clears content of the data, but keeps internal buffer as is so it can be used to build another string.
      */
@@ -383,6 +406,15 @@ private struct StringImpl(C, RC rc)
     void put(in C val) pure
     {
         ensureAvail(1);
+        static if (!rc)
+        {
+            if (len + 1 < stackBuf.length)
+            {
+                stackBuf[len++] = val;
+                stackBuf[len] = 0;
+                return;
+            }
+        }
         pay.buf[pay.len++] = val;
         pay.buf[pay.len] = 0;
     }
@@ -394,6 +426,17 @@ private struct StringImpl(C, RC rc)
         static if (C.sizeof == CF.sizeof && is(typeof(pay.buf[0 .. str.length] = str[])))
         {
             ensureAvail(str.length);
+            static if (!rc)
+            {
+                if (len + str.length < stackBuf.length)
+                {
+                    stackBuf[len .. len + str.length] = str[];
+                    len += str.length;
+                    stackBuf[pay.len] = 0;
+                    return;
+                }
+            }
+
             pay.buf[pay.len .. pay.len + str.length] = str[];
             pay.len += str.length;
             pay.buf[pay.len] = 0;
@@ -401,19 +444,57 @@ private struct StringImpl(C, RC rc)
         else
         {
             // copy range
-            static if (hasLength!S) ensureAvail(str.length);
+            static if (!rc) size_t nlen = pay.len;
+            static if (hasLength!S) {
+                ensureAvail(str.length);
+                static if (!rc) nlen += str.length;
+            }
             import bc.internal.utf : byUTF;
             static if (isSomeString!S)
                 auto r = cast(const(CF)[])str;  // because inout(CF) causes problems with byUTF
             else
                 alias r = str;
 
+            // special case when we can determine that it still fits to stack buffer
+            static if (!rc && hasLength!S && is(C == CF))
+            {
+                if (len + nlen + 1 < stackBuf.length)
+                {
+                    foreach (ch; r.byUTF!(Unqual!C))
+                    {
+                        stackBuf[pay.len++] = ch;
+                        stackBuf[pay.len] = 0;
+                    }
+                    return;
+                }
+            }
+
             foreach (ch; r.byUTF!(Unqual!C))
             {
-                static if (!hasLength!S) ensureAvail(1);
-                pay.buf[pay.len++] = ch;
+                static if (!hasLength!S || !is(C == CF))
+                {
+                    ensureAvail(1);
+                    static if (!rc) {
+                        static if (!hasLength!S) nlen++;
+                        else {
+                            if (pay.len == nlen) nlen++;
+                        }
+                    }
+                }
+                static if (!rc)
+                {
+                    if (nlen + 1 < stackBuf.length) // we can still use stack buffer
+                    {
+                        stackBuf[len++] = ch;
+                        continue;
+                    }
+                    pay.buf[pay.len++] = ch;
+                }
+                else
+                    pay.buf[pay.len++] = ch;
             }
             pay.buf[pay.len] = 0;
+            static if (!rc) assert(nlen == pay.len);
         }
     }
 
@@ -434,18 +515,28 @@ private struct StringImpl(C, RC rc)
                 pay.buf = () @trusted { return (cast(C*)enforceMalloc(l * C.sizeof))[0..l]; }();
                 return;
             }
+
+            if (pay.buf.length - pay.len > sz) return; // we can fit in what we've already allocated
         }
         else
         {
+            if (len + sz < stackBuf.length) return; // still fits to stack buffer
             if (buf is null)
             {
-                immutable l = max(sz+1, 8); // allocates at leas 8B
+                immutable l = max(len + sz + 1, stackBuf.length + 8); // allocates at leas 8B over
                 buf = () @trusted { return (cast(C*)enforceMalloc(l * C.sizeof))[0..l]; }();
+                buf[0..len] = stackBuf[0..len]; // copy data from stack buffer,  we'll use heap allocated one from now
                 return;
             }
-        }
+            if (len <= stackBuf.length && len + sz > stackBuf.length)
+            {
+                // some buffer is already preallocated, but we're still on stackBuffer and need to move to heap allocated one
+                assert(buf.length > stackBuf.length);
+                buf[0..len] = stackBuf[0..len]; // copy current data from the stack
+            }
 
-        if (pay.buf.length - pay.len > sz) return; // we can fit in what we've already allocated
+            if (buf.length - len > sz) return; // we can fit in what we've already allocated
+        }
 
         // reallocate buffer
         // Note: new length calculation taken from std.array.appenderNewCapacity
@@ -516,6 +607,7 @@ auto rcString(C = char, S)(auto ref S str)
 @nogc unittest
 {
     auto s = String("Hello");
+    assert(s.capacity == String.stackBuf.length - 6); // Hello\0
     assert(s[] == "Hello", s[]);
     s ~= " String";
     assert(s[] == "Hello String", s[]);
@@ -527,6 +619,36 @@ auto rcString(C = char, S)(auto ref S str)
     assert(s.buf is null);
     assert(s.len == 0);
     assert(s3 == "Hello String");
+}
+
+@("String stack to heap")
+@nogc unittest
+{
+    import std.algorithm : each;
+    import std.range : repeat;
+
+    String s;
+    'a'.repeat(s.stackBuf.length-1).each!(c => s.put(c));
+    assert(s.length == s.stackBuf.length-1);
+    assert(s.stackBuf[$-2] == 'a');
+    assert(s.stackBuf[$-1] == '\0');
+    assert(s.buf is null);
+    assert(&s.data[0] == &s.stackBuf[0]);
+    s ~= 'b';
+    assert(s.stackBuf[$-1] == '\0'); // doesn't change on stack to heap switch
+    assert(s.buf !is null);
+    assert(&s.data[0] == &s.buf[0]);
+    assert(s.buf[s.stackBuf.length-1] == 'b');
+    s ~= "foo";
+
+    s.clear();
+    s ~= 'c';
+    assert(&s.data[0] == &s.stackBuf[0]); // back to stack usage
+    assert(s.buf !is null); // but heap buffer is still there
+    'd'.repeat(s.stackBuf.length).each!(c => s.put(c));
+    assert(&s.data[0] == &s.buf[0]);
+    assert(s.length == 1 + s.stackBuf.length);
+    assert(s.buf[1 + s.stackBuf.length] == '\0');
 }
 
 private C[] trustedRealloc(C)(scope C[] buf, size_t strLength, bool bufIsOnStack)
