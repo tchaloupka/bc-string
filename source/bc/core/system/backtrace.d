@@ -139,7 +139,7 @@ struct TraceInfo
                 version (LDC) {}
                 else {
                     static if (__VERSION__ < 2092) enum FIRSTFRAME = 4;
-                    static if (__VERSION__ < 2096) enum FIRSTFRAME = 5;
+                    else static if (__VERSION__ < 2096) enum FIRSTFRAME = 5;
                     else enum FIRSTFRAME = 0;
 
                     // getFirstFrame searches for throw in stack, that is not always the case (ie when printing out just the current stack)

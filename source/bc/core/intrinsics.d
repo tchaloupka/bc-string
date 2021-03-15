@@ -35,8 +35,9 @@ version (D_BetterC)
 
     version (DigitalMars)
     {
-        extern (C)
-        nothrow @nogc
+        // see: https://issues.dlang.org/show_bug.cgi?id=19946
+        extern (C) nothrow @nogc:
+
         short* _memset16(short *p, short value, size_t count)
         {
             short *pstart = p;
@@ -45,6 +46,32 @@ version (D_BetterC)
             for (ptop = &p[count]; p < ptop; p++)
                 *p = value;
             return pstart;
+        }
+
+        int*_memset32(int *p, int value, size_t count)
+        {
+            version (D_InlineAsm_X86)
+            {
+                asm
+                {
+                    mov     EDI,p           ;
+                    mov     EAX,value       ;
+                    mov     ECX,count       ;
+                    mov     EDX,EDI         ;
+                    rep                     ;
+                    stosd                   ;
+                    mov     EAX,EDX         ;
+                }
+            }
+            else
+            {
+                int *pstart = p;
+                int *ptop;
+
+                for (ptop = &p[count]; p < ptop; p++)
+                    *p = value;
+                return pstart;
+            }
         }
     }
 
