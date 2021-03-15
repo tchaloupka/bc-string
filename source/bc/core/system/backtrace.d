@@ -28,18 +28,6 @@ struct TraceInfo
         return callstack.ptr[0 .. numframes];
     }
 
-    // NOTE: The first few frames with the current implementation are
-    //       inside core.runtime and the object code, so eliminate
-    //       these for readability.  The alternative would be to
-    //       exclude the first N frames that are in a list of
-    //       mangled function names.
-    version (LDC) enum FIRSTFRAME = 0; // See: https://github.com/ldc-developers/druntime/blob/ldc/src/core/runtime.d#L861
-    else {
-        static if (__VERSION__ < 2092) enum FIRSTFRAME = 4;
-        else enum FIRSTFRAME = 5;
-    }
-    // enum FIRSTFRAME = 0;
-
     version (Posix)
     {
         /// Gather trace info from Throwable
@@ -48,7 +36,7 @@ struct TraceInfo
             this(ex.info);
         }
 
-        this(Throwable.TraceInfo ti, uint first = FIRSTFRAME) nothrow @trusted @nogc pure
+        this(Throwable.TraceInfo ti) nothrow @trusted @nogc pure
         {
             if (ti !is null)
             {
@@ -58,10 +46,10 @@ struct TraceInfo
                 assert(typeid(obj).name == "core.runtime.DefaultTraceInfo", "Unexpected trace info type");
 
                 auto trace = cast(TraceInfo*)(cast(void*)obj);
-                if (trace.numframes >= first)
+                if (trace.numframes)
                 {
-                    this.numframes = trace.numframes - first;
-                    this.callstack[0..numframes] = trace.callstack[first..trace.numframes];
+                    this.numframes = trace.numframes;
+                    this.callstack[0..numframes] = trace.callstack[0..numframes];
                 }
             }
         }
@@ -139,7 +127,7 @@ struct TraceInfo
         {
             version (Posix)
             {
-                import bc.core.system.linux.dwarf : dumpCallstack;
+                import bc.core.system.linux.dwarf : dumpCallstack, getFirstFrame;
                 import bc.core.system.linux.elf : Image;
                 import bc.core.system.linux.execinfo : backtrace_symbols;
                 import core.sys.posix.stdlib : free;
@@ -147,11 +135,22 @@ struct TraceInfo
                 const char** frameList = () @trusted { return backtrace_symbols(&callstack[0], cast(int) numframes); }();
                 scope(exit) () @trusted { free(cast(void*)frameList); }();
 
+                auto first = getFirstFrame(callstack[0..numframes], frameList);
+                version (LDC) {}
+                else {
+                    static if (__VERSION__ < 2092) enum FIRSTFRAME = 4;
+                    static if (__VERSION__ < 2096) enum FIRSTFRAME = 5;
+                    else enum FIRSTFRAME = 0;
+
+                    // getFirstFrame searches for throw in stack, that is not always the case (ie when printing out just the current stack)
+                    if (!first) first = FIRSTFRAME;
+                }
+
                 auto image = Image.openSelf();
                 if (image.isValid)
-                    return image.processDebugLineSectionData(sink, callstack[0..numframes], frameList, &dumpCallstack!S);
+                    return image.processDebugLineSectionData(sink, callstack[first..numframes], &frameList[first], &dumpCallstack!S);
 
-                return dumpCallstack(sink, image, callstack[0..numframes], frameList, null);
+                return dumpCallstack(sink, image, callstack[first..numframes], &frameList[first], null);
             }
             else static assert(0, "Unsupported platform");
         }
@@ -192,9 +191,22 @@ version (Posix)
         foreach (ln; dti) { buf2 ~= ln; buf2 ~= '\n'; }
 
         // import std.stdio : writeln;
+        // writeln("-----------------");
         // writeln("our: ", cast(const(char)[])buf[]);
         // writeln("-----------------");
         // writeln("orig: ", cast(const(char)[])buf2[]);
-        assert(buf[] == buf2[0..$-1]);
+        // writeln("-----------------");
+        static if (__VERSION__ >= 2095)
+        {
+            // we try to reflect last compiler behavior, previous might differ
+            assert(buf[] == buf2[0..$-1]);
+        }
+        else
+        {
+            import std.algorithm : countUntil;
+            immutable ln = buf[].countUntil('\n');
+            assert(ln>0);
+            assert(buf[0..ln] == buf2[0..ln]);
+        }
     }
 }

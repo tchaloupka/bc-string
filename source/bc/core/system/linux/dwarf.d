@@ -12,6 +12,21 @@ import core.stdc.string : strlen;
 // Selective copy from normally unavailable: https://github.com/dlang/druntime/blob/master/src/rt/backtrace/dwarf.d
 // Also combined (and noted) with some only here used module parts
 
+size_t getFirstFrame(const(void*)[] callstack, const char** frameList) nothrow @nogc
+{
+    import core.internal.execinfo : getMangledSymbolName;
+
+    version (LDC) enum BaseExceptionFunctionName = "_d_throw_exception";
+    else enum BaseExceptionFunctionName = "_d_throwdwarf";
+
+    foreach (i; 0..callstack.length)
+    {
+        auto proc = getMangledSymbolName(frameList[i][0 .. strlen(frameList[i])]);
+        if (proc == BaseExceptionFunctionName) return i+1;
+    }
+    return 0;
+}
+
 /// Our customized @nogc variant of https://github.com/dlang/druntime/blob/master/src/rt/backtrace/dwarf.d#L94
 size_t dumpCallstack(S)(ref S sink, ref Image image, const(void*)[] callstack, const char** frameList,
     const(ubyte)[] debugLineSectionData) nothrow @nogc
@@ -47,14 +62,25 @@ size_t dumpCallstack(S)(ref S sink, ref Image image, const(void*)[] callstack, c
         if (locations.length > 0 && locations[i].line != -1)
         {
             bool includeSlash = locations[i].directory.length > 0 && locations[i].directory[$ - 1] != '/';
-            string printFormat = includeSlash ? "%.*s/%.*s:%d " : "%.*s%.*s:%d ";
-
-            appendToBuffer(
-                printFormat.ptr,
-                cast(int) locations[i].directory.length, locations[i].directory.ptr,
-                cast(int) locations[i].file.length, locations[i].file.ptr,
-                locations[i].line,
-            );
+            if (locations[i].line)
+            {
+                string printFormat = includeSlash ? "%.*s/%.*s:%d " : "%.*s%.*s:%d ";
+                appendToBuffer(
+                    printFormat.ptr,
+                    cast(int) locations[i].directory.length, locations[i].directory.ptr,
+                    cast(int) locations[i].file.length, locations[i].file.ptr,
+                    locations[i].line,
+                );
+            }
+            else
+            {
+                string printFormat = includeSlash ? "%.*s/%.*s " : "%.*s%.*s ";
+                appendToBuffer(
+                    printFormat.ptr,
+                    cast(int) locations[i].directory.length, locations[i].directory.ptr,
+                    cast(int) locations[i].file.length, locations[i].file.ptr,
+                );
+            }
         }
         else
         {

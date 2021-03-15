@@ -424,11 +424,29 @@ else version (linux)
         {
             import std.format : format;
             string std = () @trusted { return format!"Now how cool is that!: %s"(ex); }();
-            (Exception ex, string std) nothrow @nogc
+            (Exception ex, string std) nothrow @nogc @trusted
             {
                 auto str = nogcFormat!"Now how cool is that!: %s"(ex);
                 assert(str.startsWith("Now how cool is that!: bc.string.format.__unittest_L"));
-                assert(str[0..$] == std[0..$]);
+                // import core.stdc.stdio; printf("%s\nvs\n%s\n", std.ptr, str.ptr);
+                static if (__VERSION__ >= 2095)
+                {
+                    // we try to reflect last compiler behavior, previous might differ
+                    assert(str[0..$] == std[0..$]);
+                }
+                else
+                {
+                    int ln = -1;
+                    foreach (i, c; str[]) {
+                        if (c=='\n') {
+                            ln = cast(int)i;
+                            break;
+                        }
+                    }
+
+                    assert(ln>0);
+                    assert(str[0..ln] == std[0..ln]);
+                }
             }(ex, std);
         }
     }
