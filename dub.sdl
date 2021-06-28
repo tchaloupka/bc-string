@@ -9,7 +9,6 @@ configuration "default" {
 
 // test build with betterC
 configuration "betterC" {
-    targetType "executable"
     buildOptions "betterC"
     versions "CI_MAIN"
 }

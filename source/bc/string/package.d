@@ -166,7 +166,9 @@ version (CI_MAIN)
         else version (linux)
         {
             import bc.core.system.backtrace : TraceInfo;
-            printf("%s\n", nogcFormat!"where am i: %s"(TraceInfo.current).ptr);
+            StringZ buf;
+            buf.nogcFormatTo!"where am i: %s"(TraceInfo.current);
+            printf("%s\n", buf.ptr);
         }
 
         assert(numDigits(0) == 1);
