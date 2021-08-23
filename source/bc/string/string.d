@@ -261,7 +261,7 @@ private struct StringImpl(C, RC rc, Zero zero)
         }
 
         /// Copy constructor
-        this(ref return scope StringImpl rhs) pure
+        this(ref return scope StringImpl rhs) pure @safe
         {
             if (rhs.pay)
             {
@@ -315,7 +315,7 @@ private struct StringImpl(C, RC rc, Zero zero)
         }
 
         ///
-        StringImpl clone() scope
+        StringImpl clone() scope @trusted
         {
             return StringImpl(this[]);
         }
