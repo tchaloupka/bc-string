@@ -2,6 +2,24 @@
  * @nogc formatting utilities
  *
  * Inspired by: https://github.com/weka-io/mecca/blob/master/src/mecca/lib/string.d
+ *
+ * Sink Types:
+ * various functions in this module use "sinks" which are buffers or objects that get filled with
+ * the formatting data while the format functions are running. The following sink types are
+ * supported to be passed into these arguments:
+ * - Arrays (`isArray!S && is(ForeachType!S : char))`)
+ * - $(LREF NullSink)
+ * - Object with `put(const(char)[])` and `put(char)` functions
+ *
+ * Passing in arrays will make the sink `@nogc pure nothrow @safe` as everything will be written
+ * into that memory. Passing in arrays that are too short to hold all the data will trigger a
+ * `RangeError` or terminate the program in betterC.
+ *
+ * Passing in a $(LREF NullSink) instance will not allocate any memory and just count the bytes that
+ * will be allocated.
+ *
+ * Otherwise any type that contains a `put` method that can be called both with `const(char)[]` and
+ * with `char` arguments can be used.
  */
 module bc.string.format;
 
@@ -57,6 +75,13 @@ private template isTraceInfo(T)
  * and error messages formatting. But more cases can be added as needed.
  *
  * WARN: %s accepts pointer to some char assuming it's a zero terminated string
+ *
+ * Params:
+ *     fmt  = The format string, much like in std.format
+ *     sink = The sink where the full string should be written to, see section "Sink Types"
+ *     args = The arguments to fill the format string with
+ *
+ * Returns: the length of the formatted string.
  */
 size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args) nothrow @nogc
 {
@@ -471,7 +496,8 @@ size_t getFormatSize(string fmt = "%s", ARGS...)(auto ref ARGS args) @safe nothr
     assert(getFormatSize!"%s"(9896) == 4);
 }
 
-private struct NullSink {} // pseudosink used just for calculation of resulting string length
+/// pseudosink used just for calculation of resulting string length
+struct NullSink {}
 
 private enum FMT: ubyte {
     STR,
