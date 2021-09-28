@@ -83,10 +83,9 @@ private template isTraceInfo(T)
  *
  * Returns: the length of the formatted string.
  */
-size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args) nothrow @nogc
+size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args)
 {
     // TODO: not pure because of float formatter
-    // import std.conv : text;
     alias sfmt = splitFmt!fmt;
     static assert (sfmt.numFormatters == ARGS.length, "Expected " ~ sfmt.numFormatters.stringof ~
         " arguments, got " ~ ARGS.length.stringof);
@@ -1445,9 +1444,10 @@ private mixin template SinkWriter(S, bool field = true)
         static if (field) alias s = sink;
         @nogc pure nothrow @safe
         {
+            import std.range : rput = put;
             void advance(size_t len) { totalLen += len; }
-            void write(const(char)[] str) { s.put(str); advance(str.length); }
-            void write(char ch) { s.put(ch); advance(1); }
+            void write(const(char)[] str) { rput(s, str); advance(str.length); }
+            void write(char ch) { rput(s, ch); advance(1); }
         }
     }
 
