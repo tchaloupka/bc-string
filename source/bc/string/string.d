@@ -3,6 +3,7 @@
  */
 module bc.string.string;
 
+import bc.core.intrinsics;
 import bc.core.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
 import core.atomic : atomicOp;
 import std.range : ElementEncodingType, hasLength, isInputRange;
@@ -917,4 +918,167 @@ cc`;
         assert(dedent!`foo
             bar ` == "foo\nbar ");
     }
+}
+
+/**
+ * Builds valid char map from the provided ranges of invalid ones
+ *
+ * For example when provided with "\0/:\xff" means that only characters 0-9 would have true in the generated map.
+ */
+bool[256] buildValidCharMap()(string invalidRanges)
+{
+    assert(invalidRanges.length % 2 == 0, "Uneven ranges");
+    bool[256] res = true;
+
+    for (int i=0; i < invalidRanges.length; i+=2)
+        for (int j=invalidRanges[i]; j <= invalidRanges[i+1]; ++j)
+            res[j] = false;
+    return res;
+}
+
+///
+@("buildValidCharMap")
+@safe unittest
+{
+    string ranges = "\0 \"\"(),,//:@[]{{}}\x7f\xff";
+    assert(buildValidCharMap(ranges) ==
+        cast(bool[])[
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,1,0,1,1,1,1,1,0,0,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
+            0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        ]);
+}
+
+/*
+ * Advances index over the token to the next character while checking for valid characters.
+ * On success, buffer index is left on the next character.
+ *
+ * Params:
+ *   - ranges = ranges of characters to stop on
+ *   - next  = next character/s to stop on (must be present in the provided ranges too)
+ *   - sseRanges =
+ *         as SSE optimized path is limited to 8 pairs, here one can provide merged ranges for a fast
+ *         SSE path that would be precised with `ranges`. Otherwise `ranges` is used for SSE path too.
+ *
+ * Returns:
+ *     * 0 on success
+ *     * -1 when token hasn't been found (ie not enough data in the buffer)
+ *     * -2 when character from invalid ranges was found but not matching one of next characters (ie invalid token)
+ */
+int parseToken(string ranges, alias next, string sseRanges = null, C)(const(C)[] buffer, ref size_t i) pure
+    if (is(C == ubyte) || is(C == char))
+{
+    version (DigitalMars) {
+        static if (__VERSION__ >= 2094) pragma(inline, true); // older compilers can't inline this
+    } else pragma(inline, true);
+
+    immutable charMap = parseTokenCharMap!(ranges)();
+
+    static if (LDC_with_SSE42)
+    {
+        // CT function to prepare input for SIMD vector enum
+        static byte[16] padRanges()(string ranges)
+        {
+            byte[16] res;
+            // res[0..ranges.length] = cast(byte[])ranges[]; - broken on macOS betterC tests
+            foreach (i, c; ranges) res[i] = cast(byte)c;
+            return res;
+        }
+
+        static if (sseRanges) alias usedRng = sseRanges;
+        else alias usedRng = ranges;
+        static assert(usedRng.length <= 16, "Ranges must be at most 16 characters long");
+        static assert(usedRng.length % 2 == 0, "Ranges must have even number of characters");
+        enum rangesSize = usedRng.length;
+        enum byte16 rngE = padRanges(usedRng);
+
+        if (_expect(buffer.length - i >= 16, true))
+        {
+            size_t left = (buffer.length - i) & ~15; // round down to multiple of 16
+            byte16 ranges16 = rngE;
+
+            do
+            {
+                byte16 b16 = () @trusted { return cast(byte16)_mm_loadu_si128(cast(__m128i*)&buffer[i]); }();
+                immutable r = _mm_cmpestri(
+                    ranges16, rangesSize,
+                    b16, 16,
+                    _SIDD_LEAST_SIGNIFICANT | _SIDD_CMP_RANGES | _SIDD_UBYTE_OPS
+                );
+
+                if (r != 16)
+                {
+                    i += r;
+                    goto FOUND;
+                }
+                i += 16;
+                left -= 16;
+            }
+            while (_expect(left != 0, true));
+        }
+    }
+    else
+    {
+        // faster unrolled loop to iterate over 8 characters
+        loop: while (_expect(buffer.length - i >= 8, true))
+        {
+            static foreach (_; 0..8)
+            {
+                if (_expect(!charMap[buffer[i]], false)) goto FOUND;
+                ++i;
+            }
+        }
+    }
+
+    // handle the rest
+    if (_expect(i >= buffer.length, false)) return -1;
+
+    FOUND:
+    while (true)
+    {
+        static if (is(typeof(next) == char)) {
+            static assert(!charMap[next], "Next character is not in ranges");
+            if (buffer[i] == next) return 0;
+        } else {
+            static assert(next.length > 0, "Next character not provided");
+            static foreach (c; next) {
+                static assert(!charMap[c], "Next character is not in ranges");
+                if (buffer[i] == c) return 0;
+            }
+        }
+        if (_expect(!charMap[buffer[i]], false)) return -2;
+        if (_expect(++i == buffer.length, false)) return -1;
+    }
+}
+
+///
+@("parseToken")
+@safe unittest
+{
+    size_t idx;
+    string buf = "foo\nbar";
+    auto ret = parseToken!("\0\037\177\377", "\r\n")(buf, idx);
+    assert(ret == 0); // no error
+    assert(idx == 3); // index of newline character
+
+    idx = 0;
+    ret = parseToken!("\0\037\177\377", "\r\n")(buf[0..3], idx);
+    assert(ret == -1); // not enough data to find next character
+    assert(idx == 3);
+
+    idx = 0;
+    buf = "foo\t\nbar";
+    ret = parseToken!("\0\037\177\377", "\r\n")(buf, idx);
+    assert(ret == -2); // invalid character '\t' found in token
+    assert(idx == 3); // invalid character on index 3
+}
+
+private immutable(bool[256]) parseTokenCharMap(string invalidRanges)() {
+    static immutable charMap = buildValidCharMap(invalidRanges);
+    return charMap;
 }

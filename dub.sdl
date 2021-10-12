@@ -7,8 +7,13 @@ license "BSL-1.0"
 configuration "default" {
 }
 
-// test build with betterC
 configuration "betterC" {
     buildOptions "betterC"
+}
+
+configuration "bc-string-test-betterC" {
+    targetType "executable"
+    buildOptions "betterC"
+    dflags "-mcpu=native"
     versions "CI_MAIN"
 }
