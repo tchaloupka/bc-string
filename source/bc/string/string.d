@@ -7,7 +7,7 @@ import bc.core.intrinsics;
 import bc.core.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
 import core.atomic : atomicOp;
 import std.range : ElementEncodingType, hasLength, isInputRange;
-import std.traits : ForeachType, isSomeChar, isSomeString, Unqual;
+import std.traits : ForeachType, isSomeChar, isSomeString, isStaticArray, Unqual;
 // debug import core.stdc.stdio;
 
 nothrow @nogc:
@@ -17,7 +17,7 @@ alias CString = const(char)[];
 template isAcceptableString(S)
 {
     enum isAcceptableString =
-        (isInputRange!S || isSomeString!S) &&
+        (isInputRange!S || isSomeString!S || isStaticArray!S) &&
         isSomeChar!(ElementEncodingType!S);
 }
 
@@ -175,6 +175,15 @@ nothrow @nogc @trusted unittest
         auto tmp = "baz".tempCString!dchar;
         assert(tmp._buf[0..3] == "baz"d);
     }
+}
+
+@("tempCString - static array")
+nothrow @nogc @trusted unittest
+{
+    import core.stdc.string : strlen;
+
+    immutable(char)[3] str = "abc";
+    assert(strlen(str.tempCString()) == 3);
 }
 
 /**
@@ -336,7 +345,7 @@ private struct StringImpl(C, RC rc, Zero zero)
         pay.buf = () @trusted { return (cast(C*)enforceMalloc(len * C.sizeof))[0..len]; }();
     }
 
-    this(S)(auto ref scope S str) if (isAcceptableString!S)
+    this(S)(auto ref scope S str)
     {
         put(str);
     }
@@ -656,7 +665,7 @@ auto rcString(C = char, S)(auto ref S str)
 }
 
 @("RCString.from")
-@nogc unittest
+@nogc @safe unittest
 {
     {
         auto str = RCString.from("foo", 42, "bar");
@@ -670,14 +679,14 @@ auto rcString(C = char, S)(auto ref S str)
 }
 
 @("rcString")
-@nogc unittest
+@nogc @safe unittest
 {
     auto str = "foo".rcString();
     assert(str == "foo");
 }
 
 @("String")
-@nogc unittest
+@nogc @safe unittest
 {
     auto s = String("Hello");
     assert(s.capacity == String.stackBuf.length - 5);
@@ -686,7 +695,7 @@ auto rcString(C = char, S)(auto ref S str)
     assert(s[] == "Hello String", s[]);
     auto s2 = s.clone();
     assert(s[] == s2[]);
-    assert(s.ptr != s2.ptr);
+    () @trusted { assert(s.ptr != s2.ptr); }();
 
     auto s3 = s.move();
     assert(s.buf is null);
@@ -694,8 +703,17 @@ auto rcString(C = char, S)(auto ref S str)
     assert(s3 == "Hello String");
 }
 
+@("String - put static array")
+@nogc @safe unittest
+{
+    String s;
+    immutable(char)[3] foo = "foo";
+    s ~= foo;
+    assert(s == "foo");
+}
+
 @("String stack to heap")
-@nogc unittest
+@nogc @safe unittest
 {
     import std.algorithm : each;
     import std.range : repeat;
@@ -725,7 +743,7 @@ auto rcString(C = char, S)(auto ref S str)
 }
 
 @("String reserve")
-@nogc unittest
+@nogc @safe unittest
 {
     String buf;
     assert(buf.length == 0);
