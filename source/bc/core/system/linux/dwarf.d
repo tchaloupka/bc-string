@@ -361,6 +361,7 @@ T read(T)(ref const(ubyte)[] buffer) @nogc nothrow
     }
     else
     {
+        import core.stdc.string : memcpy;
         T result = void;
         memcpy(&result, buffer.ptr, T.sizeof);
     }
