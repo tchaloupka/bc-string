@@ -129,7 +129,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS arg
             enum f = tok.type;
 
             alias Typ = Unqual!(ARGS[j]);
-            auto val = args[j];
+            alias val = args[j];
 
             static if (isStdNullable!Typ) {
                 if (val.isNull) write("null");
