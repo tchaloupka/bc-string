@@ -5,7 +5,6 @@ module bc.string.string;
 
 import bc.core.intrinsics;
 import bc.core.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
-import core.atomic : atomicOp;
 import std.range : ElementEncodingType, hasLength, isInputRange;
 import std.traits : ForeachType, isSomeChar, isSomeString, isStaticArray, Unqual;
 // debug import core.stdc.stdio;
@@ -256,7 +255,7 @@ private struct StringImpl(C, RC rc, Zero zero)
         {
             struct Payload
             {
-                shared size_t refs;
+                size_t refs;
                 size_t len;
                 C[] buf;
 
@@ -271,19 +270,16 @@ private struct StringImpl(C, RC rc, Zero zero)
         }
 
         /// Copy constructor
-        this(ref return scope StringImpl rhs) pure @safe
+        this(ref return scope inout StringImpl rhs) pure @safe inout
         {
-            if (rhs.pay)
-            {
-                this.pay = rhs.pay;
-                atomicOp!"+="(this.pay.refs, 1);
-            }
+            pay = rhs.pay;
+            if (pay) () @trusted { (cast(Payload*)pay).refs++; }();
         }
 
         /// Destructor
         ~this()
         {
-            if (pay && atomicOp!"-="(pay.refs, 1) == 0) heapDealloc(pay);
+            if (pay && --pay.refs == 0) heapDealloc(pay);
         }
     }
     else
@@ -675,6 +671,16 @@ auto rcString(C = char, S)(auto ref S str)
     {
         auto str = RCWString.from("foo");
         assert(str == "foo"w);
+    }
+}
+
+version (D_Exceptions)
+{
+    @("RCString with Nullable")
+    @nogc @safe unittest
+    {
+        import std.typecons : Nullable;
+        Nullable!RCString sn = RCString("foo");
     }
 }
 
