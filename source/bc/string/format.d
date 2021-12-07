@@ -479,7 +479,7 @@ else version (linux)
 /**
  * Gets size needed to hold formatted string result
  */
-size_t getFormatSize(string fmt = "%s", ARGS...)(auto ref ARGS args) @safe nothrow @nogc
+size_t getFormatSize(string fmt = "%s", ARGS...)(auto ref ARGS args) nothrow @nogc
 {
     NullSink ns;
     return ns.nogcFormatTo!fmt(args);
