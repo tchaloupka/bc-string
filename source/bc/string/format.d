@@ -430,6 +430,10 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
     Custom c;
     assert(nogcFormat(c) == "custom: foo=42");
     assert(getFormatSize(c) == "custom: foo=42".length);
+
+    char[512] buf;
+    auto l = buf.nogcFormatTo(c);
+    assert(buf[0..l] == "custom: foo=42");
 }
 
 version (D_BetterC) {}
@@ -1390,6 +1394,8 @@ private auto sinkWrap(S)(ref S sink) @trusted // we're only using this internall
 {
     static if (isStaticArray!S && is(ForeachType!S : char))
         return SinkWrap!(char[])(sink[]); // we need to slice it
+    else static if (isArray!S && is(ForeachType!S : char))
+        return SinkWrap!(char[])(sink);
     else static if (is(S == struct))
         return SinkWrap!(S*)(&sink); // work with a pointer to an original sink (ie `MallocBuffer`)
     else static assert(0, "Unsupported sink type: " ~ S.stringof);
