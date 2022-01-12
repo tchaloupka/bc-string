@@ -482,6 +482,13 @@ private struct StringImpl(C, RC rc, Zero zero)
 
     alias opOpAssign(string op : "~") = put;
 
+    void opAssign(S)(auto ref scope S str)
+    if (isAcceptableString!S || is(Unqual!S == C))
+    {
+        clear();
+        put(str);
+    }
+
     void put(in C val) pure
     {
         static if (!rc)
