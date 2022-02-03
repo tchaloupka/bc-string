@@ -9,6 +9,7 @@ import std.traits;
 alias cstring = const(char)[];
 
 //TODO: check for owerloads?
+//TODO: use parseToken to fast check length of input number
 
 ParseResult!T parse(T)(cstring str) if (isIntegral!T && !is(T == enum))
 {

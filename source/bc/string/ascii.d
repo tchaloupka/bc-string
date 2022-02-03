@@ -8,7 +8,6 @@ module bc.string.ascii;
  *   - > 0 - when first string is greater than the second
  */
 int sicmp(const(char)[] a, const(char)[] b) @safe nothrow @nogc
-in (a.length && b.length, "empty string")
 {
     immutable len = a.length > b.length ? b.length : a.length;
     version (Posix) {
