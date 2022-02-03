@@ -10,6 +10,8 @@ SRC_FILES="-Isource
     source/bc/core/intrinsics.d
     source/bc/core/traits.d
     source/bc/internal/utf.d
+    source/bc/string/ascii.d
+    source/bc/string/conv.d
     source/bc/string/format.d
     source/bc/string/string.d
     source/bc/string/package.d

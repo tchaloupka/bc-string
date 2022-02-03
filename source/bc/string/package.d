@@ -1,6 +1,7 @@
 module bc.string;
 
 public import bc.string.ascii;
+public import bc.string.conv;
 public import bc.string.format;
 public import bc.string.numeric;
 public import bc.string.string;
@@ -18,7 +19,7 @@ version (CI_MAIN)
             {
                 import std.meta : AliasSeq;
 
-                alias modules = AliasSeq!(bc.string.ascii, bc.string.format, bc.string.numeric, bc.string.string);
+                alias modules = AliasSeq!(bc.string.ascii, bc.string.conv, bc.string.format, bc.string.numeric, bc.string.string);
                 static foreach (m; modules)
                 {
                     static foreach(u; __traits(getUnitTests, m)) {
