@@ -86,3 +86,29 @@ unittest
     assert('2'.toUpper == '2');
     assert('z'.toUpper == 'Z');
 }
+
+/// Checks if character is a digit ('0'..'9')
+bool isDigit(char c) @safe pure nothrow @nogc
+{
+    pragma(inline, true);
+    static immutable chmap = ()
+        {
+            bool[256] res = void;
+
+            for (int i=0; i < 256; ++i) {
+                if (i >= '0' && i <= '9') res[i] = true;
+                else res[i] = false;
+            }
+            return res;
+        }();
+
+    return chmap[c];
+}
+
+@safe unittest
+{
+    assert('0'.isDigit);
+    assert('9'.isDigit);
+    assert(!'a'.isDigit);
+    assert(!'+'.isDigit);
+}
