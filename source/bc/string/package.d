@@ -1,5 +1,6 @@
 module bc.string;
 
+public import bc.string.ascii;
 public import bc.string.format;
 public import bc.string.numeric;
 public import bc.string.string;
@@ -17,11 +18,14 @@ version (CI_MAIN)
             {
                 import std.meta : AliasSeq;
 
-                alias modules = AliasSeq!(bc.string.format, bc.string.numeric, bc.string.string);
+                alias modules = AliasSeq!(bc.string.ascii, bc.string.format, bc.string.numeric, bc.string.string);
                 static foreach (m; modules)
                 {
                     static foreach(u; __traits(getUnitTests, m)) {
-                        debug printf("testing " ~ m.stringof ~ ": '" ~ __traits(getAttributes, u)[0] ~ "'\n");
+                        static if (__traits(getAttributes, u).length)
+                            printf("unittest %s:%d | '" ~ __traits(getAttributes, u)[0] ~ "'\n", __traits(getLocation, u)[0].ptr, __traits(getLocation, u)[1]);
+                        else
+                            printf("unittest %s:%d\n", __traits(getLocation, u)[0].ptr, __traits(getLocation, u)[1]);
                         u();
                     }
                 }
