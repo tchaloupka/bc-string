@@ -855,13 +855,13 @@ string enumToStr(E)(E value) pure @safe nothrow @nogc
     return null;
 }
 
-size_t formatPtr(S)(ref S sink, ulong p) pure @trusted nothrow @nogc
+size_t formatPtr(S)(auto ref S sink, ulong p) pure @trusted nothrow @nogc
 {
     pragma(inline);
     return formatPtr(sink, cast(void*)p);
 }
 
-size_t formatPtr(S)(ref S sink, const void* ptr) pure @safe nothrow @nogc
+size_t formatPtr(S)(auto ref S sink, const void* ptr) pure @safe nothrow @nogc
 {
     pragma(inline);
     mixin SinkWriter!S;
@@ -888,7 +888,7 @@ size_t formatPtr(S)(ref S sink, const void* ptr) pure @safe nothrow @nogc
 alias Upper = Flag!"Upper";
 
 pure @safe nothrow @nogc
-size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(ref S sink, ulong val)
+size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(auto ref S sink, ulong val)
 {
     static if (is(S == NullSink))
     {
@@ -947,7 +947,7 @@ size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(ref S
     assert(formatHex!(10, '0', Upper.yes)(buf, 0x1234567890a) && buf[0..11] == "1234567890A");
 }
 
-size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(ref S sink, T val) pure @safe nothrow @nogc
+size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(auto ref S sink, T val) pure @safe nothrow @nogc
     if (is(typeof({ulong v = val;})))
 {
     import bc.string.numeric : numDigits;
@@ -1030,7 +1030,7 @@ size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(ref S sink, T val)
     assert(formatDecimal(buf, true) && buf[0..1] == "1");
 }
 
-size_t formatFloat(S)(ref S sink, double val) @trusted nothrow @nogc // not pure with this implementation
+size_t formatFloat(S)(auto ref S sink, double val) @trusted nothrow @nogc // not pure with this implementation
 {
     import core.stdc.stdio : snprintf;
     import std.algorithm : min;
@@ -1054,7 +1054,7 @@ size_t formatFloat(S)(ref S sink, double val) @trusted nothrow @nogc // not pure
     assert(formatFloat(buf, double.infinity) && buf[0..3] == "inf");
 }
 
-size_t formatUUID(S)(ref S sink, UUID val) pure @safe nothrow @nogc
+size_t formatUUID(S)(auto ref S sink, UUID val) pure @safe nothrow @nogc
 {
     static if (!is(S == NullSink))
     {
@@ -1095,7 +1095,7 @@ else
  * Formats SysTime as ISO extended string.
  * Only UTC format supported.
  */
-size_t formatSysTime(S)(ref S sink, SysTime val) @trusted nothrow @nogc // not pure because of gmtime_r
+size_t formatSysTime(S)(auto ref S sink, SysTime val) @trusted nothrow @nogc // not pure because of gmtime_r
 {
     mixin SinkWriter!S;
 
@@ -1248,7 +1248,7 @@ else
  * It uses custom formatter that is inspired by std.format output, but a bit shorter.
  * Note: ISO 8601 was considered, but it's not as human readable as used format.
  */
-size_t formatDuration(S)(ref S sink, Duration val) @trusted nothrow @nogc pure
+size_t formatDuration(S)(auto ref S sink, Duration val) @trusted nothrow @nogc pure
 {
     mixin SinkWriter!S;
 
@@ -1390,7 +1390,7 @@ private struct SinkWrap(S)
 }
 
 // helper to create `SinkWrap` that handles various sink types
-private auto sinkWrap(S)(ref S sink) @trusted // we're only using this internally and don't escape the pointer
+private auto sinkWrap(S)(auto ref S sink) @trusted // we're only using this internally and don't escape the pointer
 {
     static if (isStaticArray!S && is(ForeachType!S : char))
         return SinkWrap!(char[])(sink[]); // we need to slice it
