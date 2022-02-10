@@ -4,6 +4,7 @@
 module bc.string.conv;
 
 import bc.string.ascii;
+import bc.core.intrinsics;
 import std.traits;
 
 alias cstring = const(char)[];
@@ -13,29 +14,32 @@ alias cstring = const(char)[];
 
 ParseResult!T parse(T)(cstring str) if (isIntegral!T && !is(T == enum))
 {
+    pragma(inline, true);
     if (!str.length) return ParseResult!T.init;
 
     size_t count;
-    T res;
     static if (isSigned!T) {
+         ptrdiff_t res;
         bool sign;
         if (str[0] == '-') {
             sign = true;
             count++;
         } else if (str[0] == '+')
             count++;
-    }
+    } else size_t res;
 
     for (; count < str.length; ++count)
     {
-        if (!str[count].isDigit) return ParseResult!T.init;
+        if (_expect(!str[count].isDigit, false)) return ParseResult!T.init;
         res = res*10 + (str[count]-'0');
     }
+
+    if (_expect(res > T.max, false)) return ParseResult!T.init;
 
     static if (isSigned!T) {
         if (sign) res = -res;
     }
-    return ParseResult!T(res, count);
+    return ParseResult!T(cast(T)res, count);
 }
 
 @safe unittest
