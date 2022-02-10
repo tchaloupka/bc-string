@@ -83,7 +83,7 @@ private template isTraceInfo(T)
  *
  * Returns: the length of the formatted string.
  */
-size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref S sink, auto ref ARGS args)
+size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref ARGS args)
 {
     // TODO: not pure because of float formatter
     alias sfmt = splitFmt!fmt;
@@ -855,13 +855,13 @@ string enumToStr(E)(E value) pure @safe nothrow @nogc
     return null;
 }
 
-size_t formatPtr(S)(auto ref S sink, ulong p) pure @trusted nothrow @nogc
+size_t formatPtr(S)(auto ref scope S sink, ulong p)
 {
     pragma(inline);
-    return formatPtr(sink, cast(void*)p);
+    return formatPtr(sink, () @trusted { return cast(void*)p; }());
 }
 
-size_t formatPtr(S)(auto ref S sink, const void* ptr) pure @safe nothrow @nogc
+size_t formatPtr(S)(auto ref scope S sink, const void* ptr)
 {
     pragma(inline);
     mixin SinkWriter!S;
@@ -888,7 +888,7 @@ size_t formatPtr(S)(auto ref S sink, const void* ptr) pure @safe nothrow @nogc
 alias Upper = Flag!"Upper";
 
 pure @safe nothrow @nogc
-size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(auto ref S sink, ulong val)
+size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(auto ref scope S sink, ulong val)
 {
     static if (is(S == NullSink))
     {
@@ -947,7 +947,7 @@ size_t formatHex(size_t W = 0, char fill = '0', Upper upper = Upper.no, S)(auto 
     assert(formatHex!(10, '0', Upper.yes)(buf, 0x1234567890a) && buf[0..11] == "1234567890A");
 }
 
-size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(auto ref S sink, T val) pure @safe nothrow @nogc
+size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(auto ref scope S sink, T val)
     if (is(typeof({ulong v = val;})))
 {
     import bc.string.numeric : numDigits;
@@ -1030,12 +1030,12 @@ size_t formatDecimal(size_t W = 0, char fillChar = ' ', S, T)(auto ref S sink, T
     assert(formatDecimal(buf, true) && buf[0..1] == "1");
 }
 
-size_t formatFloat(S)(auto ref S sink, double val) @trusted nothrow @nogc // not pure with this implementation
+size_t formatFloat(S)(auto ref scope S sink, double val)
 {
     import core.stdc.stdio : snprintf;
     import std.algorithm : min;
     char[20] buf = void;
-    auto len = snprintf(&buf[0], 20, "%g", val);
+    auto len = () @trusted { return snprintf(&buf[0], 20, "%g", val); }();
     len = min(len, 19);
     static if (!is(S == NullSink))
     {
@@ -1054,7 +1054,7 @@ size_t formatFloat(S)(auto ref S sink, double val) @trusted nothrow @nogc // not
     assert(formatFloat(buf, double.infinity) && buf[0..3] == "inf");
 }
 
-size_t formatUUID(S)(auto ref S sink, UUID val) pure @safe nothrow @nogc
+size_t formatUUID(S)(auto ref scope S sink, UUID val)
 {
     static if (!is(S == NullSink))
     {
@@ -1095,7 +1095,7 @@ else
  * Formats SysTime as ISO extended string.
  * Only UTC format supported.
  */
-size_t formatSysTime(S)(auto ref S sink, SysTime val) @trusted nothrow @nogc // not pure because of gmtime_r
+size_t formatSysTime(S)(auto ref scope S sink, SysTime val) @trusted
 {
     mixin SinkWriter!S;
 
@@ -1248,7 +1248,7 @@ else
  * It uses custom formatter that is inspired by std.format output, but a bit shorter.
  * Note: ISO 8601 was considered, but it's not as human readable as used format.
  */
-size_t formatDuration(S)(auto ref S sink, Duration val) @trusted nothrow @nogc pure
+size_t formatDuration(S)(auto ref scope S sink, Duration val)
 {
     mixin SinkWriter!S;
 
@@ -1390,7 +1390,7 @@ private struct SinkWrap(S)
 }
 
 // helper to create `SinkWrap` that handles various sink types
-private auto sinkWrap(S)(auto ref S sink) @trusted // we're only using this internally and don't escape the pointer
+private auto sinkWrap(S)(auto ref scope S sink) @trusted // we're only using this internally and don't escape the pointer
 {
     static if (isStaticArray!S && is(ForeachType!S : char))
         return SinkWrap!(char[])(sink[]); // we need to slice it
@@ -1440,6 +1440,7 @@ private mixin template SinkWriter(S, bool field = true)
     }
     else static if (is(S == NullSink))
     {
+        @nogc pure nothrow @safe:
         static if (field) alias s = sink;
         void advance(size_t len) { totalLen += len; }
         void write(const(char)[] str) { advance(str.length); }
@@ -1448,13 +1449,10 @@ private mixin template SinkWriter(S, bool field = true)
     else
     {
         static if (field) alias s = sink;
-        @nogc pure nothrow @safe
-        {
-            import std.range : rput = put;
-            void advance(size_t len) { totalLen += len; }
-            void write(const(char)[] str) { rput(s, str); advance(str.length); }
-            void write(char ch) { rput(s, ch); advance(1); }
-        }
+        import std.range : rput = put;
+        void advance()(size_t len) { totalLen += len; }
+        void write()(const(char)[] str) { rput(s, str); advance(str.length); }
+        void write()(char ch) { rput(s, ch); advance(1); }
     }
 
     alias put = write; // output range interface
