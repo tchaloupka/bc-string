@@ -809,6 +809,40 @@ private C[] trustedRealloc(C)(scope C[] buf, size_t strLength, bool bufIsOnStack
     }
 }
 
+/// Strips leading whitespace ('\t', '\n', '\r', ' ')
+S stripLeft(S)(S str)
+{
+    pragma(inline, true);
+    /// All chars except for whitespace ('\t', '\n', '\r', ' ')
+    enum AllExceptWhitespaceRanges = "\0\10\13\14\16\37\41\377";
+
+    size_t rpos;
+    immutable rs = parseToken!(AllExceptWhitespaceRanges, '"')(str, rpos);
+    if(rs == -1) return str[$..$]; // Only whitespace string, return empty range.
+    else return str[rpos..$];
+}
+
+@("stripLeft")
+unittest
+{
+    assert(stripLeft("\t\n\r foobar\t\n\r ") == "foobar\t\n\r ");
+    assert(stripLeft("\t\n\r\t\n\r ") == "");
+}
+
+bool startsWith(S, char[] chars)(S str)
+{
+    enum validCharMap = buildValidCharMap(chars, true);
+    return validCharMap[str[0]];
+}
+
+@("startsWith")
+unittest
+{
+    assert(startsWith!(string, ['+', '-'])("-42"));
+    assert(startsWith!(string, ['+', '-'])("+42"));
+    assert(!startsWith!(string, ['+', '-'])("42"));
+}
+
 /**
  * Alternative implementation of `std.string.outdent` that differs in:
  *
@@ -952,18 +986,25 @@ cc`;
 }
 
 /**
- * Builds valid char map from the provided ranges of invalid ones
+ * Builds char map from the provided ranges.
  *
- * For example when provided with "\0/:\xff" means that only characters 0-9 would have true in the generated map.
+ * Params:
+ *      ranges = ranges of ascii characters.
+ *      valid = wheteher range characters are valid or not.
+ *              For example:
+ *              buildValidCharMap("\0/:\xff", false)   means that only characters 0-9 would have true in the generated map.
+ *              buildValidCharMap("\0/:\xff", true)    means that all characters except 0-9 would have true in the generated map.
+ *
+ * Returns: generated table
  */
-bool[256] buildValidCharMap()(string invalidRanges)
+bool[256] buildValidCharMap(S)(S ranges, bool valid = false)
 {
-    assert(invalidRanges.length % 2 == 0, "Uneven ranges");
-    bool[256] res = true;
+    assert(ranges.length % 2 == 0, "Uneven ranges");
+    bool[256] res = valid ? false : true;
 
-    for (int i=0; i < invalidRanges.length; i+=2)
-        for (int j=invalidRanges[i]; j <= invalidRanges[i+1]; ++j)
-            res[j] = false;
+    for (int i=0; i < ranges.length; i+=2)
+        for (int j=ranges[i]; j <= ranges[i+1]; ++j)
+            res[j] = valid ? true : false;
     return res;
 }
 
@@ -972,7 +1013,7 @@ bool[256] buildValidCharMap()(string invalidRanges)
 @safe unittest
 {
     string ranges = "\0 \"\"(),,//:@[]{{}}\x7f\xff";
-    assert(buildValidCharMap(ranges) ==
+    assert(buildValidCharMap(ranges, false) ==
         cast(bool[])[
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
             0,1,0,1,1,1,1,1,0,0,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
@@ -982,6 +1023,18 @@ bool[256] buildValidCharMap()(string invalidRanges)
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        ]);
+
+    assert(buildValidCharMap(ranges, true) ==
+        cast(bool[])[
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+            1,0,1,0,0,0,0,0,1,1,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,
+            1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
         ]);
 }
 
