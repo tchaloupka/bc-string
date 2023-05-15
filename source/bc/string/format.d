@@ -279,7 +279,6 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
  */
 const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 {
-    import bc.string.string : String;
     static StringZ str;
     str.clear();
     nogcFormatTo!fmt(str, args);

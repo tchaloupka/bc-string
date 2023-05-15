@@ -703,9 +703,9 @@ version (D_Exceptions)
 {
     auto s = String("Hello");
     assert(s.capacity == String.stackBuf.length - 5);
-    assert(s[] == "Hello", s[]);
+    assert(s[] == "Hello");
     s ~= " String";
-    assert(s[] == "Hello String", s[]);
+    assert(s[] == "Hello String");
     auto s2 = s.clone();
     assert(s[] == s2[]);
     () @trusted { assert(s.ptr != s2.ptr); }();

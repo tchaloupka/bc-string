@@ -779,7 +779,7 @@ pure @safe @nogc: // CHANGE: added @nogc
     TypeTuple:
         B Number Arguments
     */
-    char[] parseType( char[] name = null ) scope return
+    char[] parseType( char[] name = null ) return scope
     {
         static immutable string[23] primitives = [
             "char", // a
@@ -1266,7 +1266,7 @@ pure @safe @nogc: // CHANGE: added @nogc
         TypeFunction:
             CallConvention FuncAttrs Arguments ArgClose Type
     */
-    char[] parseTypeFunction( char[] name = null, IsDelegate isdg = IsDelegate.no ) return
+    char[] parseTypeFunction( char[] name = null, IsDelegate isdg = IsDelegate.no ) return scope
     {
         debug(trace) printf( "parseTypeFunction+\n" );
         debug(trace) scope(success) printf( "parseTypeFunction-\n" );
