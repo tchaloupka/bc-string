@@ -779,7 +779,7 @@ pure @safe @nogc: // CHANGE: added @nogc
     TypeTuple:
         B Number Arguments
     */
-    char[] parseType( char[] name = null ) return scope
+    char[] parseType( char[] name = null ) scope return
     {
         static immutable string[23] primitives = [
             "char", // a
