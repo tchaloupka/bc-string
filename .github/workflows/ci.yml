@@ -16,10 +16,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        dc: [ldc-latest, dmd-2.097.2, dmd-2.095.1, dmd-2.094.2, ldc-1.27.1, ldc-1.25.1, ldc-1.24.0, dmd-2.094.2]
+        dc: [dmd-latest, ldc-latest]
+        include:
+          - { os: ubuntu-latest, dc: dmd-2.094.2, arch: x86_64 }
+          - { os: ubuntu-latest, dc: ldc-1.24.0, arch: x86_64 }
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install D compiler
       uses: dlang-community/setup-dlang@v1
       with:
