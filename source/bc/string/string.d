@@ -368,7 +368,7 @@ private struct StringImpl(C, RC rc, Zero zero)
     /**
      * Access internal string including the reserved block if any.
      */
-    @property inout(C)[] data() pure inout
+    @property inout(C)[] data() pure inout scope return
     {
         if (!length) return null;
 
@@ -377,30 +377,32 @@ private struct StringImpl(C, RC rc, Zero zero)
         }
 
         assert(pay.buf);
-        return pay.buf[0..pay.len];
+        auto ret = pay.buf[0..pay.len];
+        return ret;
     }
 
     static if (zero)
     {
         /// Pointer to string data that can be directly used in a C functions expecting '\0' terminal char.
-        @property inout(C*) ptr() pure inout @trusted
+        @property inout(C*) ptr() pure inout scope return
         {
             if (!length) return null;
             static  if (!rc) {
-                if (len + Z <= STACK_LEN) return stackBuf.ptr;
+                if (len + Z <= STACK_LEN) return &stackBuf[0];
             }
-            return pay.buf.ptr;
+            auto ret = &pay.buf[0];
+            return ret;
         }
     }
 
     /// Slicing support for the internal buffer data
-    @property inout(C)[] opSlice() pure inout
+    @property inout(C)[] opSlice() pure inout scope return
     {
         return this.data;
     }
 
     /// ditto
-    @property inout(C)[] opSlice(size_t start, size_t end) pure inout
+    @property inout(C)[] opSlice(size_t start, size_t end) pure inout @trusted return scope
     {
         if (start > length || end > length) assert(0, "Index out of bounds");
         if (start > end) assert(0, "Invalid slice indexes");
