@@ -17,3 +17,7 @@ configuration "bc-string-test-betterC" {
     dflags "-mcpu=native"
     versions "CI_MAIN"
 }
+
+configuration "unittest" {
+    dflags "-preview=dip1000"
+}
