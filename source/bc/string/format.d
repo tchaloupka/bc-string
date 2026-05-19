@@ -114,7 +114,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
 
             static if (tok.del.length) bool first = true;
             static if (!isArray!Typ && isForwardRange!Typ) auto val = args[j].save();
-            else auto val = args[j];
+            else alias val = args[j];
             foreach (ref e; val)
             {
                 static if (tok.del.length) {
@@ -207,7 +207,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
                 else static if (is(typeof(val[])))
                     advance(s.nogcFormatTo!"%s"(val[])); // sliceable values
                 else static if (is(Typ == struct)) {
-                    static if (__traits(compiles, (v) @nogc {auto sw = sinkWrap(s); v.toString(sw); }(val))) {
+                    static if (__traits(compiles, (ref v) @nogc {auto sw = sinkWrap(s); v.toString(sw); }(val))) {
                         // we can use custom defined toString
                         auto sw = sinkWrap(s);
                         val.toString(sw);
@@ -220,7 +220,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
                             write(Prefix);
                         }
                         alias Names = FieldNameTuple!Typ;
-                        foreach(i, field; val.tupleof) {
+                        foreach(i, ref field; val.tupleof) {
                             enum string Name = Names[i];
                             enum Prefix = (i == 0 ? "" : ", ") ~ Name ~ "=";
                             write(Prefix);
@@ -233,7 +233,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
             }
             else static if (f == FMT.CHR) {
                 static assert (is(Typ : char), "Requested char format, but provided: " ~ Typ.stringof);
-                write((&val)[0..1]);
+                write(() @trusted { return (&val)[0..1]; }());
             }
             else static if (f == FMT.DEC) {
                 static assert (is(Typ : ulong), "Requested decimal format, but provided: " ~ Typ.stringof);

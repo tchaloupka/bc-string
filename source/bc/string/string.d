@@ -36,7 +36,7 @@ struct TempCString(C)
     @disable this(this);
     alias ptr this;
 
-    @property inout(C)* bufPtr() inout
+    @property inout(C)* bufPtr() return inout
     {
         return _ptr == useStack ? _buf.ptr : _ptr;
     }
