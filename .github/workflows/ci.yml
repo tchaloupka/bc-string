@@ -18,9 +18,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
         dc: [dmd-latest, ldc-latest]
         include:
-          - { os: ubuntu-latest, dc: dmd-2.102.2, arch: x86_64 }
-          - { os: ubuntu-latest, dc: dmd-2.094.2, arch: x86_64 }
-          - { os: ubuntu-latest, dc: ldc-1.24.0, arch: x86_64 }
+          - { os: ubuntu-latest, dc: dmd-2.102.2, arch: x86_64, dip1000: false }
+          - { os: ubuntu-latest, dc: dmd-2.094.2, arch: x86_64, dip1000: false }
+          - { os: ubuntu-latest, dc: ldc-1.24.0, arch: x86_64, dip1000: false }
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
@@ -29,6 +29,8 @@ jobs:
       with:
           compiler: ${{ matrix.dc }}
     - name: Run tests
+      env:
+        DIP1000: ${{ matrix.dip1000 }}
       run: scripts/ci.sh
     - name: Upload codecov
       if: matrix.os == 'ubuntu-latest' && matrix.dc == 'dmd-latest'

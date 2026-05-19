@@ -32,7 +32,16 @@ if [ "$COVERAGE" = true ]; then
     bash codecov.sh
 else
     # test with dub
-    dub test --compiler=$DC
+    # The "unittest" dub configuration enables -preview=dip1000, which older
+    # compilers in the CI matrix don't accept. For those, set DIP1000=false and
+    # run the unittests directly without dip1000.
+    if [ "$DIP1000" = "false" ]; then
+        echo "Building unittest runner (dip1000 skipped for this compiler)"
+        $DC -version=CI_MAIN -debug -g -unittest -w -vcolumns -of=bc-string-ut $SRC_FILES
+        ./bc-string-ut
+    else
+        dub test --compiler=$DC
+    fi
 
     # test release build
     echo "Building release test build"
