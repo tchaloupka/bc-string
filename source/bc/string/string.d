@@ -832,6 +832,272 @@ unittest
     assert(!startsWith!(string, ['+', '-'])("42"));
 }
 
+/// Builds a char-map ranges string (pairs of [from, to]) covering exactly the given characters.
+auto buildCharMapRanges(string chars)()
+{
+    char[chars.length * 2] ranges;
+    static foreach (i, ch; chars)
+    {
+        ranges[i * 2] = chars[i];
+        ranges[(i * 2) + 1] = chars[i];
+    }
+    return ranges;
+}
+
+/// Strips leading characters belonging to the `chars` set.
+S stripLeft(string chars, S)(S str)
+{
+    enum ranges = buildCharMapRanges!(chars)();
+    enum charMap = buildValidCharMap(ranges, true);
+
+    foreach (i, c; str)
+        if (!charMap[c]) return str[i..$];
+    return str[0..0];
+}
+
+@("stripLeft - custom")
+@safe unittest
+{
+    assert(stripLeft!"ab"("abfoob") == "foob");
+}
+
+/// Strips trailing characters belonging to the `chars` set (whitespace by default).
+S stripRight(string chars = "\t\n\r ", S)(S str)
+{
+    pragma(inline, true);
+    enum ranges = buildCharMapRanges!(chars)();
+    enum charMap = buildValidCharMap(ranges, true);
+
+    foreach_reverse (i, c; str)
+        if (!charMap[c]) return str[0..i+1];
+    return str[0..0];
+}
+
+@("stripRight")
+@safe unittest
+{
+    assert(stripRight("\t\n\r foobar\t\n\r ") == "\t\n\r foobar");
+    assert(stripRight("\t\n\r\t\n\r ") == "");
+    assert(stripRight!"ab"("abfooab") == "abfoo");
+}
+
+/// Strips leading and trailing characters belonging to the `chars` set (whitespace by default).
+S strip(string chars = "\t\n\r ", S)(S str)
+{
+    pragma(inline, true);
+    return str.stripLeft!chars().stripRight!chars();
+}
+
+@("strip")
+@safe unittest
+{
+    assert(strip("\t\n\r foobar\t\n\r ") == "foobar");
+    assert(strip("\t\n\r\t\n\r ") == "");
+}
+
+/// Returns whether all characters in `str` are already in lower-case (ASCII).
+bool isLower(const(char)[] str) @safe pure
+{
+    import bc.string.ascii : toLower;
+    foreach (c; str)
+        if (c.toLower != c) return false;
+    return true;
+}
+
+@safe unittest
+{
+    assert(isLower("foobar"));
+    assert(!isLower("fooBar"));
+}
+
+/// Returns the index of the first occurrence of `needle` in `str`, or -1.
+ptrdiff_t indexOf(const(char)[] str, const(char)[] needle) @safe pure nothrow @nogc
+in (needle.length, "No needle provided")
+{
+    import core.stdc.string : memcmp;
+    size_t idx;
+    while (idx + needle.length <= str.length)
+    {
+        if (() @trusted { return memcmp(&str[idx], needle.ptr, needle.length); }() == 0)
+            return idx;
+        idx++;
+    }
+    return -1;
+}
+
+/// Returns the index of the last occurrence of `c` in `str`, or -1.
+ptrdiff_t lastIndexOf(const(char)[] str, char c) @safe pure nothrow @nogc
+{
+    if (_expect(!str.length, false)) return -1;
+    for (ptrdiff_t i = str.length - 1; i >= 0; --i)
+        if (str[i] == c) return i;
+    return -1;
+}
+
+@("indexOf")
+@safe unittest
+{
+    assert("foobar".indexOf("bar") == 3);
+    assert("foobar".indexOf("baz") == -1);
+    assert("foo.bar.baz".lastIndexOf('.') == 7);
+    assert("foobar".lastIndexOf('.') == -1);
+}
+
+/// Returns whether `str` ends with `postfix`.
+bool endsWith(const(char)[] str, const(char)[] postfix) @safe pure nothrow @nogc
+in (postfix.length, "Empty postfix")
+{
+    import core.stdc.string : memcmp;
+    pragma(inline, true);
+    if (_expect(str.length < postfix.length, false)) return false;
+    return () @trusted { return memcmp(&str[$-postfix.length], postfix.ptr, postfix.length) == 0; }();
+}
+
+/// Case insensitive variant; `postfix` must already be in lower-case.
+bool endsWith(string postfix)(const(char)[] str)
+in (postfix.length, "Empty postfix")
+{
+    if (_expect(str.length < postfix.length, false)) return false;
+    return streqi!postfix(str[$-postfix.length..$]);
+}
+
+@("endsWith")
+@safe unittest
+{
+    assert("foobar".endsWith("bar"));
+    assert(!"foo".endsWith("bar"));
+    assert("foobar".endsWith!"bar");
+    assert("fooBAR".endsWith!"bar");
+}
+
+/**
+ * Specialized case insensitive equality comparison against a compile-time constant string.
+ * The template parameter string must already be in lower-case (saves needless work).
+ */
+bool streqi(string a)(const(char)[] b) @trusted
+{
+    pragma(inline, true);
+    static assert(a.isLower, "Template parameter must be already in lower case");
+    import bc.string.ascii : toLower;
+    if (_expect(a.length != b.length, false)) return false;
+
+    enum maxStackLen = 512;
+    static if (a.length <= maxStackLen)
+    {
+        char[a.length] low = void;
+        for (int i = 0; i < a.length; ++i) low[i] = b[i].toLower;
+        return low[] == a;
+    }
+    else
+    {
+        size_t i;
+        while (a.length - i >= 8)
+        {
+            static foreach (_; 0..8)
+                if (a[i] != b[i++].toLower) return false;
+        }
+        for (; i < a.length; ++i)
+            if (a[i] != b[i].toLower) return false;
+        return true;
+    }
+}
+
+@("streqi")
+@safe unittest
+{
+    assert(streqi!"foobar"("FooBar"));
+    assert(!streqi!"foobar"("FooBaz"));
+    assert(!streqi!"foo"("foobar"));
+}
+
+/**
+ * Replaces all occurrences of `oldPart` with `newPart` in `text`.
+ * Note: the result is a slice into a shared static buffer, valid only until the next call.
+ */
+const(char)[] replace(const(char)[] text, const(char)[] oldPart, const(char)[] newPart) @safe nothrow @nogc
+{
+    static String buf;
+    buf.clear();
+
+    size_t pos;
+    while (true)
+    {
+        auto idx = text[pos..$].indexOf(oldPart);
+        if (idx == -1)
+        {
+            buf ~= text[pos..$];
+            break;
+        }
+        buf ~= text[pos..pos+idx];
+        buf ~= newPart;
+        pos += idx + oldPart.length;
+    }
+    return buf.data();
+}
+
+@("replace")
+@safe unittest
+{
+    assert(":::::".replace(":", "-") == "-----");
+    assert("a:b:c".replace(":", "") == "abc");
+}
+
+/// Simple fixed size string appender over a caller-provided buffer.
+struct FixedString
+{
+    nothrow @nogc @safe pure:
+
+    this(return scope char[] buf) { this.buf = buf; }
+
+    void put(const(char)[] str) scope
+    in (buf, "Not initialized")
+    {
+        if (_expect(!str.length, false)) return;
+        assert(len + str.length <= buf.length, "Data won't fit");
+        import core.stdc.string : memcpy;
+        () @trusted { memcpy(&buf[len], str.ptr, str.length); }();
+        len += str.length;
+    }
+
+    void put(char c) scope
+    in (buf, "Not initialized")
+    {
+        assert(len < buf.length, "Data won't fit");
+        buf[len++] = c;
+    }
+
+    void clear() scope { len = 0; }
+
+    size_t length() const scope { return len; }
+
+    /// Slicing support for the internal buffer data
+    inout(char)[] opSlice() pure inout return scope { return buf[0..len]; }
+
+    /// ditto
+    inout(char)[] opSlice(size_t start, size_t end) pure inout return scope
+    {
+        if (start > length || end > length) assert(0, "Index out of bounds");
+        if (start > end) assert(0, "Invalid slice indexes");
+        return buf[start .. end];
+    }
+
+    private:
+    char[] buf;
+    size_t len;
+}
+
+@("FixedString")
+@safe unittest
+{
+    char[16] b;
+    auto fs = FixedString(b[]);
+    fs.put("foo");
+    fs.put('-');
+    fs.put("bar");
+    assert(fs[] == "foo-bar");
+    assert(fs.length == 7);
+}
+
 /**
  * Alternative implementation of `std.string.outdent` that differs in:
  *

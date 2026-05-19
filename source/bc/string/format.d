@@ -1070,21 +1070,18 @@ size_t formatBinary(S, T)(auto ref scope S sink, const T integral)
 if (isIntegral!T)
 {
     pragma(inline);
-    import std.bitmanip : nativeToBigEndian;
-
     mixin SinkWriter!S;
 
-    auto bytes = nativeToBigEndian!T(integral);
-    foreach (i, b; bytes)
+    enum bytes = T.sizeof;
+    foreach (i; 0 .. bytes)
     {
+        if (i > 0) write(" ");
+        immutable b = cast(ubyte)(integral >>> (8 * (bytes - 1 - i)));
         for (int bit = 7; bit >= 0; --bit)
-        {
-            if (i > 0 && bit == 7) write(" ");
             write((b & (1 << bit)) ? "1" : "0");
-        }
     }
 
-    return 8 * bytes.length + (bytes.length ? bytes.length - 1 : 0);
+    return 8 * bytes + (bytes - 1);
 }
 
 @("binary")
