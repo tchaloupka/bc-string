@@ -166,7 +166,7 @@ assert(numDigits(ulong.max) == 20);
 
 String holding structures for various usecases.
 Has char, wchar and dchar variants.
-All has leading `\0` character so can be used as a C string as is without the need to use `toStringz`.
+All has trailing `\0` character so can be used as a C string as is without the need to use `toStringz`.
 
 * `TempCString` - temporary zero terminated string - inspired by not visible `std.internal.cstring.TempCStringBuffer`
 * `RCString` - refcounted string that can be passed as needed and is freed with last instance
