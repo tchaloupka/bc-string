@@ -533,20 +533,6 @@ private struct StringImpl(C, RC rc, Zero zero)
         {
             // copy range
 
-            // special case when we can determine that it still fits to stack buffer
-            static if (!rc && hasLength!S && is(C == CF))
-            {
-                if (pay.len + Z <= STACK_LEN)
-                {
-                    foreach (ch; r.byUTF!(Unqual!C))
-                    {
-                        stackBuf[pay.len++] = ch;
-                        static if (zero) stackBuf[pay.dlen] = 0;
-                    }
-                    return;
-                }
-            }
-
             static if (!rc) size_t nlen = pay.len;
             static if (hasLength!S) {
                 ensureAvail(str.length);

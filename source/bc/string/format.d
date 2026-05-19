@@ -161,9 +161,12 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
                 else static if (isPointer!Typ) {
                     static if (is(typeof(*Typ)) && isSomeChar!(typeof(*Typ))) {
                         // NOTE: not safe, we can only trust that the provided char pointer is really stringz
-                        size_t i;
-                        while (val[i] != '\0') ++i;
-                        if (i) write(val[0..i]);
+                        if (val is null) write("null");
+                        else {
+                            size_t i;
+                            while (val[i] != '\0') ++i;
+                            if (i) write(val[0..i]);
+                        }
                     }
                     else advance(s.formatPtr(val));
                 }
@@ -239,7 +242,7 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
             }
             else static if (f == FMT.HEX || f == FMT.UHEX) {
                 static assert (is(Typ : ulong) || isPointer!(Typ), "Requested hex format, but provided: " ~ Typ.stringof);
-                enum u = f == FMT.HEX ? Upper.yes : Upper.no;
+                enum u = f == FMT.UHEX ? Upper.yes : Upper.no;
                 enum fs = formatSpec(f, tok.def);
                 static if (isPointer!(Typ)) {
                     import std.stdint : intptr_t;
@@ -818,7 +821,7 @@ template splitFmt(string fmt) {
                     enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.PTR, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
                 else static if (fmt[idx2+1] == '%')
                     enum helper = TypeTuple!(fmt[from .. idx1+1], helper!(idx2+2, j));
-                else static if (fmt[idx2+1] == '(' || fmt[idx2+1..idx2+3] == "-(") {
+                else static if (fmt[idx2+1] == '(' || (fmt.length >= idx2+3 && fmt[idx2+1..idx2+3] == "-(")) {
                     // nested array format specifier
                     enum l = fmt[idx2+1] == '('
                         ? getNestedArrayFmtLen(fmt[idx2+2..$])

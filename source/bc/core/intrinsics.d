@@ -112,19 +112,16 @@ version (D_BetterC)
         }
     }
 
-    version (assert)
+    version (LDC)
     {
-        version (LDC)
+        // See: https://github.com/ldc-developers/ldc/issues/2425
+        // See: https://forum.dlang.org/post/heksucpdamkgwnztyitr@forum.dlang.org
+        extern(C)
+        nothrow @nogc
+        void _d_array_slice_copy(void* dst, size_t dstlen, void* src, size_t srclen, size_t elemsz)
         {
-            // See: https://github.com/ldc-developers/ldc/issues/2425
-            // See: https://forum.dlang.org/post/heksucpdamkgwnztyitr@forum.dlang.org
-            extern(C)
-            nothrow @nogc
-            void _d_array_slice_copy(void* dst, size_t dstlen, void* src, size_t srclen, size_t elemsz)
-            {
-                import ldc.intrinsics : llvm_memcpy;
-                llvm_memcpy!size_t(dst, src, dstlen * elemsz, 0);
-            }
+            import ldc.intrinsics : llvm_memcpy;
+            llvm_memcpy!size_t(dst, src, dstlen * elemsz, 0);
         }
     }
 }

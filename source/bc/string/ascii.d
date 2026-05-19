@@ -16,7 +16,6 @@ int sicmp(const(char)[] a, const(char)[] b) @safe nothrow @nogc
         if (diff) return diff;
     } else {
         // TODO: manual loop unroll
-        immutable end = min(a.length, b.length);
         for (int i=0; i < len; ++i) {
             auto lhs = a[i].toLower;
             auto rhs = b[i].toLower;
