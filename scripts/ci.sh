@@ -9,6 +9,7 @@ SRC_FILES="-Isource
     source/bc/core/memory.d
     source/bc/core/intrinsics.d
     source/bc/core/traits.d
+    source/bc/internal/range.d
     source/bc/internal/utf.d
     source/bc/string/ascii.d
     source/bc/string/conv.d

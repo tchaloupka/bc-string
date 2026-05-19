@@ -15,8 +15,8 @@ else
 version (BC_UTF):
 
 import std.meta : AliasSeq;
-import std.range.primitives;
-import std.traits : isAutodecodableString, isConvertibleToString, isSomeChar, isSomeString;
+import bc.internal.range;
+import std.traits : isAutodecodableString, isConvertibleToString, isSomeChar, isSomeString, isStaticArray;
 
 @safe pure nothrow @nogc:
 

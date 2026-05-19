@@ -5,7 +5,7 @@ module bc.string.string;
 
 import bc.core.intrinsics;
 import bc.core.memory : enforceMalloc, enforceRealloc, heapAlloc, heapDealloc;
-import std.range : ElementEncodingType, hasLength, isInputRange;
+import bc.internal.range : ElementEncodingType, hasLength, isInputRange;
 import std.traits : ForeachType, isSomeChar, isSomeString, isStaticArray, Unqual;
 // debug import core.stdc.stdio;
 

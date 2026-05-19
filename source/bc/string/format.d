@@ -33,7 +33,7 @@ import std.traits :
     EnumMembers, FieldNameTuple, ForeachType, hasMember,
     isArray, isPointer, isSigned, isSomeChar, isStaticArray,
     PointerTarget, Unqual;
-import std.range : ElementEncodingType, isForwardRange, isInputRange;
+import bc.internal.range : ElementEncodingType, isForwardRange, isInputRange;
 import std.typecons : Flag, Tuple, isTuple;
 
 version (D_BetterC) {}
@@ -396,6 +396,10 @@ const(char)[] nogcFormat(string fmt = "%s", ARGS...)(auto ref ARGS args)
 }
 
 ///
+// Note: std.typecons.Tuple instantiates toHash -> core.internal.hash.bytesHash, which references
+// the non-template _bytesHashUnaligned not available when linking with -betterC.
+version (D_BetterC) {}
+else
 @("tuple")
 @safe unittest
 {
