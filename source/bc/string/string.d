@@ -442,10 +442,11 @@ private struct StringImpl(C, RC rc, Zero zero)
      * This can be used for example in cases when we need to fill slice of string with some known length data.
      * To return reserved data, use `dropBack`.
      */
-    void reserve(size_t sz)
+    size_t reserve(size_t sz)
     {
         ensureAvail(sz);
         pay.len += sz;
+        return sz;
     }
 
     /**

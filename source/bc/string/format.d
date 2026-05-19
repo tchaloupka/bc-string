@@ -31,7 +31,7 @@ import std.algorithm : among;
 import std.datetime.date : TimeOfDay;
 import std.traits :
     EnumMembers, FieldNameTuple, ForeachType, hasMember,
-    isArray, isPointer, isSigned, isSomeChar, isStaticArray,
+    isArray, isIntegral, isPointer, isSigned, isSomeChar, isStaticArray,
     PointerTarget, Unqual;
 import bc.internal.range : ElementEncodingType, isForwardRange, isInputRange;
 import std.typecons : Flag, Tuple, isTuple;
@@ -257,6 +257,10 @@ size_t nogcFormatTo(string fmt = "%s", S, ARGS...)(ref scope S sink, auto ref AR
             else static if (f == FMT.FLT) {
                 static assert (is(Typ : double), "Requested float format, but provided: " ~ Typ.stringof);
                 advance(s.formatFloat(val));
+            }
+            else static if (f == FMT.BIN) {
+                static assert (isIntegral!Typ, "Requested binary format, but provided: " ~ Typ.stringof);
+                advance(s.formatBinary(val));
             }
         }
         else static assert(false);
@@ -516,6 +520,7 @@ private enum FMT: ubyte {
     UHEX,
     PTR,
     FLT,
+    BIN,
 }
 
 private struct FmtParams
@@ -805,9 +810,9 @@ template splitFmt(string fmt) {
                     enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.STR, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
                 else static if (fmt[idx2+1] == 'c')
                     enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.CHR, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
-                else static if (fmt[idx2+1] == 'b') // TODO: should be binary, but use hex for now
-                    enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.HEX, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
-                else static if (fmt[idx2+1].among('d', 'u'))
+                else static if (fmt[idx2+1] == 'b')
+                    enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.BIN, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
+                else static if (fmt[idx2+1].among('d', 'u', 'i'))
                     enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.DEC, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
                 else static if (fmt[idx2+1] == 'o') // TODO: should be octal, but use hex for now
                     enum helper = TypeTuple!(fmt[from .. idx1], spec!(j, FMT.DEC, fmt[idx1+1 .. idx2+1]), helper!(idx2+2, j+1));
@@ -1058,6 +1063,37 @@ size_t formatFloat(S)(auto ref scope S sink, double val)
     assert(formatFloat(buf, 1.2345) && buf[0..6] == "1.2345");
     assert(formatFloat(buf, double.init) && buf[0..3] == "nan");
     assert(formatFloat(buf, double.infinity) && buf[0..3] == "inf");
+}
+
+/// Formats integral as a big-endian binary string (8 bits per byte, bytes space separated).
+size_t formatBinary(S, T)(auto ref scope S sink, const T integral)
+if (isIntegral!T)
+{
+    pragma(inline);
+    import std.bitmanip : nativeToBigEndian;
+
+    mixin SinkWriter!S;
+
+    auto bytes = nativeToBigEndian!T(integral);
+    foreach (i, b; bytes)
+    {
+        for (int bit = 7; bit >= 0; --bit)
+        {
+            if (i > 0 && bit == 7) write(" ");
+            write((b & (1 << bit)) ? "1" : "0");
+        }
+    }
+
+    return 8 * bytes.length + (bytes.length ? bytes.length - 1 : 0);
+}
+
+@("binary")
+@safe unittest
+{
+    char[100] buf;
+    assert(formatBinary(buf, ubyte(0b1010_0101)) == 8 && buf[0..8] == "10100101");
+    auto n = formatBinary(buf, ushort(0x00FF));
+    assert(n == 17 && buf[0..n] == "00000000 11111111");
 }
 
 size_t formatUUID(S)(auto ref scope S sink, UUID val)
